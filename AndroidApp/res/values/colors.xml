@@ -10,4 +10,5 @@
     <color name="muted">#8B9AAC</color>
     <color name="log_text">#9FB3C8</color>
     <color name="green">#22C55E</color>
+    <color name="amber">#F59E0B</color>
 </resources>
