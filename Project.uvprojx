@@ -810,6 +810,16 @@
               <FilePath>.\HardWare\Face_Config.h</FilePath>
             </File>
             <File>
+              <FileName>Weather.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\HardWare\Weather.c</FilePath>
+            </File>
+            <File>
+              <FileName>Weather.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\HardWare\Weather.h</FilePath>
+            </File>
+            <File>
               <FileName>AD.c</FileName>
               <FileType>1</FileType>
               <FilePath>.\HardWare\AD.c</FilePath>

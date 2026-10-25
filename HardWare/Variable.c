@@ -37,3 +37,9 @@ uint32_t temp1=0;         //累加器：滤波窗口内所有样本之和（必�
 uint16_t CurBattery;      //当前电量（滤波后的平均值）
 uint8_t Battery_num=0;    //获取电量滤波系数
 uint8_t Battery_Bit=1;
+
+/*天气相关*/
+uint8_t Weather_Valid=0;         //1=已有有效天气数据
+uint8_t Weather_Code=0;          //天气类型 0..9
+int8_t  Weather_Temp=0;          //温度（℃）
+uint8_t Weather_Hum=0;           //湿度（%）

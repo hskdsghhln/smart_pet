@@ -45,6 +45,21 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+
+import org.json.JSONObject;
+
+import android.location.Location;
+import android.location.LocationListener;
+import android.location.LocationManager;
+
 /**
  * 桌面宠物 BLE 蓝牙遥控器。
  *
@@ -69,6 +84,7 @@ public class MainActivity extends Activity {
 
     private static final int REQ_PERM = 1;
     private static final int REQ_ENABLE = 2;
+    private static final int REQ_LOC = 3;
     private static final int MAX_LOG_LINES = 60;
     private static final long SCAN_TIMEOUT_MS = 12000L;
 
@@ -77,15 +93,23 @@ public class MainActivity extends Activity {
     private static class Cmd {
         final String label;
         final char code;
+        final boolean sync;      // true = 拉取天气并下发（不发单字节）
 
         Cmd(String label, char code) {
             this.label = label;
             this.code = code;
+            this.sync = false;
+        }
+
+        Cmd(String label) {
+            this.label = label;
+            this.code = 0;
+            this.sync = true;
         }
     }
 
     private static final String[] GROUP_TITLE = {
-            "姿态", "移动", "特技", "灯光与状态", "调速"
+            "姿态", "移动", "特技", "灯光与状态", "调速", "天气"
     };
 
     private static final Cmd[][] GROUPS = {
@@ -120,6 +144,10 @@ public class MainActivity extends Activity {
             {
                     new Cmd("走路加速", '8'),
                     new Cmd("摇摆加速", '9'),
+            },
+            {
+                    new Cmd("同步天气"),
+                    new Cmd("显示天气", 'Q'),
             }
     };
 
@@ -140,6 +168,7 @@ public class MainActivity extends Activity {
     /* ================= 运行状态 ================= */
 
     private final Handler ui = new Handler(Looper.getMainLooper());
+    private final ExecutorService io = Executors.newSingleThreadExecutor();
     private final SimpleDateFormat ts = new SimpleDateFormat("HH:mm:ss", Locale.US);
     private final StringBuilder logBuf = new StringBuilder();
 
@@ -203,6 +232,7 @@ public class MainActivity extends Activity {
     protected void onDestroy() {
         stopScan();
         closeGatt();
+        io.shutdownNow();
         super.onDestroy();
     }
 
@@ -277,7 +307,12 @@ public class MainActivity extends Activity {
         btn.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                send(cmd, (Button) v);
+                if (cmd.sync) {
+                    markButton((Button) v);
+                    syncWeather();
+                } else {
+                    send(cmd, (Button) v);
+                }
             }
         });
         return btn;
@@ -289,7 +324,8 @@ public class MainActivity extends Activity {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             return new String[]{
                     Manifest.permission.BLUETOOTH_SCAN,
-                    Manifest.permission.BLUETOOTH_CONNECT
+                    Manifest.permission.BLUETOOTH_CONNECT,
+                    Manifest.permission.ACCESS_FINE_LOCATION
             };
         }
         return new String[]{Manifest.permission.ACCESS_FINE_LOCATION};
@@ -717,6 +753,258 @@ public class MainActivity extends Activity {
         }
     }
 
+    /* ================= 天气（定位 + Open-Meteo + 下发帧） ================= */
+
+    private static final String[] WEATHER_NAMES = {
+            "晴", "多云", "阴", "小雨", "中雨",
+            "大雨", "阵雨", "雷阵雨", "雪", "雾"
+    };
+
+    /** WMO 天气代码 -> 固件里的 0..9 类型（必须与 Weather.c 的 Weather_Text 顺序一致） */
+    private static int mapWeatherCode(int wmo) {
+        if (wmo == 0 || wmo == 1) return 0;
+        if (wmo == 2) return 1;
+        if (wmo == 3) return 2;
+        if (wmo == 45 || wmo == 48) return 9;
+        if (wmo >= 51 && wmo <= 57) return 3;
+        if (wmo == 61) return 3;
+        if (wmo == 63) return 4;
+        if (wmo == 65 || wmo == 66 || wmo == 67) return 5;
+        if (wmo >= 71 && wmo <= 77) return 8;
+        if (wmo >= 80 && wmo <= 82) return 6;
+        if (wmo == 85 || wmo == 86) return 8;
+        if (wmo >= 95) return 7;
+        return 1;
+    }
+
+    private void markButton(Button btn) {
+        if (lastBtn != null && lastBtn != btn) {
+            lastBtn.setBackgroundResource(R.drawable.sel_btn);
+        }
+        btn.setBackgroundResource(R.drawable.sel_btn_primary);
+        lastBtn = btn;
+    }
+
+    private void syncWeather() {
+        if (!ready || gatt == null || writeChar == null) {
+            toast(getString(R.string.need_connect));
+            return;
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
+                && checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION)
+                != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, REQ_LOC);
+            return;
+        }
+        appendLog("正在定位并获取天气 …");
+        io.execute(new Runnable() {
+            @Override
+            public void run() {
+                doWeatherSync();
+            }
+        });
+    }
+
+    /** 在后台线程执行：定位 -> 请求天气 -> 回到主线程下发 */
+    private void doWeatherSync() {
+        final Location loc = locateBlocking(12000L);
+        if (loc == null) {
+            postLog("× 定位失败：请确认手机已开定位并授予定位权限");
+            return;
+        }
+        postLog(String.format(Locale.US, "定位 %.4f, %.4f",
+                loc.getLatitude(), loc.getLongitude()));
+
+        int code = 1;
+        int tempC = 0;
+        int hum = 0;
+        HttpURLConnection conn = null;
+        try {
+            String url = String.format(Locale.US,
+                    "https://api.open-meteo.com/v1/forecast?latitude=%.4f&longitude=%.4f"
+                            + "&current=temperature_2m,relative_humidity_2m,weather_code",
+                    loc.getLatitude(), loc.getLongitude());
+
+            conn = (HttpURLConnection) new URL(url).openConnection();
+            conn.setConnectTimeout(8000);
+            conn.setReadTimeout(8000);
+            conn.setRequestProperty("User-Agent", "DeskPetRemote/1.0");
+
+            int http = conn.getResponseCode();
+            if (http != 200) {
+                postLog("× 天气接口返回 HTTP " + http);
+                return;
+            }
+
+            InputStream in = conn.getInputStream();
+            ByteArrayOutputStream bo = new ByteArrayOutputStream();
+            byte[] buf = new byte[2048];
+            int n;
+            while ((n = in.read(buf)) > 0) {
+                bo.write(buf, 0, n);
+            }
+            in.close();
+
+            JSONObject cur = new JSONObject(bo.toString("UTF-8")).getJSONObject("current");
+            code = mapWeatherCode(cur.optInt("weather_code", 0));
+            tempC = (int) Math.round(cur.getDouble("temperature_2m"));
+            hum = cur.optInt("relative_humidity_2m", 0);
+        } catch (Exception e) {
+            postLog("× 获取天气失败：" + e.getClass().getSimpleName());
+            return;
+        } finally {
+            if (conn != null) {
+                conn.disconnect();
+            }
+        }
+
+        final int fCode = code;
+        final int fTemp = tempC;
+        final int fHum = hum;
+        ui.post(new Runnable() {
+            @Override
+            public void run() {
+                sendWeatherFrame(fCode, fTemp, fHum);
+            }
+        });
+    }
+
+    /** 先在缓存里找，找不到再请求一次定位，最多等 timeoutMs */
+    private Location locateBlocking(long timeoutMs) {
+        LocationManager lm = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
+        if (lm == null) {
+            return null;
+        }
+
+        Location best = null;
+        try {
+            for (String p : lm.getProviders(true)) {
+                Location l = lm.getLastKnownLocation(p);
+                if (l != null && (best == null || l.getTime() > best.getTime())) {
+                    best = l;
+                }
+            }
+        } catch (SecurityException e) {
+            return null;
+        } catch (Exception e) {
+            // 忽略单个 provider 的异常
+        }
+        if (best != null && System.currentTimeMillis() - best.getTime() < 30L * 60L * 1000L) {
+            return best;
+        }
+
+        final CountDownLatch latch = new CountDownLatch(1);
+        final Location[] got = new Location[1];
+        LocationListener lis = new LocationListener() {
+            @Override
+            public void onLocationChanged(Location l) {
+                got[0] = l;
+                latch.countDown();
+            }
+
+            @Override
+            public void onStatusChanged(String provider, int status, Bundle extras) {
+            }
+
+            @Override
+            public void onProviderEnabled(String provider) {
+            }
+
+            @Override
+            public void onProviderDisabled(String provider) {
+            }
+        };
+
+        String provider = null;
+        try {
+            if (lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
+                provider = LocationManager.NETWORK_PROVIDER;
+            } else if (lm.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
+                provider = LocationManager.GPS_PROVIDER;
+            }
+        } catch (Exception e) {
+            // 忽略
+        }
+        if (provider == null) {
+            return best;
+        }
+
+        try {
+            lm.requestLocationUpdates(provider, 0L, 0f, lis, Looper.getMainLooper());
+            latch.await(timeoutMs, TimeUnit.MILLISECONDS);
+        } catch (Exception e) {
+            // 超时或权限异常
+        } finally {
+            try {
+                lm.removeUpdates(lis);
+            } catch (Exception ignore) {
+            }
+        }
+        return got[0] != null ? got[0] : best;
+    }
+
+    /** 组帧 AA 55 03 CODE TEMP HUM XOR 并写入 FFF2 */
+    @SuppressLint("MissingPermission")
+    private void sendWeatherFrame(int code, int tempC, int hum) {
+        if (!ready || gatt == null || writeChar == null) {
+            appendLog("× 连接已断开，天气未下发");
+            return;
+        }
+
+        int c = Math.max(0, Math.min(9, code));
+        int t = Math.max(0, Math.min(100, tempC + 40));
+        int h = Math.max(0, Math.min(100, hum));
+
+        byte[] f = new byte[7];
+        f[0] = (byte) 0xAA;
+        f[1] = (byte) 0x55;
+        f[2] = (byte) 3;
+        f[3] = (byte) c;
+        f[4] = (byte) t;
+        f[5] = (byte) h;
+        f[6] = (byte) (f[2] ^ f[3] ^ f[4] ^ f[5]);
+
+        boolean ok;
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                ok = gatt.writeCharacteristic(writeChar, f,
+                        BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE)
+                        == BluetoothGatt.GATT_SUCCESS;
+            } else {
+                writeChar.setWriteType(BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE);
+                writeChar.setValue(f);
+                ok = gatt.writeCharacteristic(writeChar);
+            }
+        } catch (Exception e) {
+            ok = false;
+        }
+
+        String name = WEATHER_NAMES[c];
+        if (ok) {
+            appendLog("→ 天气 " + name + " " + tempC + "C " + hum + "%  帧 " + toHex(f));
+            appendLog("提示：按「显示天气」或对桌宠说「天气」切到天气表情");
+        } else {
+            appendLog("× 天气帧写入失败（GATT 忙或连接已断）");
+        }
+    }
+
+    private static String toHex(byte[] b) {
+        StringBuilder sb = new StringBuilder();
+        for (byte x : b) {
+            sb.append(String.format(Locale.US, "%02X ", x & 0xFF));
+        }
+        return sb.toString().trim();
+    }
+
+    private void postLog(final String s) {
+        ui.post(new Runnable() {
+            @Override
+            public void run() {
+                appendLog(s);
+            }
+        });
+    }
+
     /* ================= 状态与日志 ================= */
 
     private static final int STATE_IDLE = 0;
@@ -833,6 +1121,13 @@ public class MainActivity extends Activity {
                 startScanFlow();
             } else {
                 toast(getString(R.string.need_perm));
+            }
+        } else if (req == REQ_LOC) {
+            boolean ok = grant.length > 0 && grant[0] == PackageManager.PERMISSION_GRANTED;
+            if (ok) {
+                syncWeather();
+            } else {
+                toast("没有定位权限，无法获取天气");
             }
         }
     }

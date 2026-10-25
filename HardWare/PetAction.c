@@ -595,7 +595,7 @@ static uint8_t Command_IsValid(uint16_t cmd)
 		case 0x34: case 0x35: case 0x36: case 0x37: case 0x38:
 		case 0x39: case 0x40: case 0x41: case 0x42: case 0x43:
 		case 0x44: case 0x45: case 0x46: case 0x47: case 0x48:
-		case 0x49: case 0x50:
+		case 0x49: case 0x50: case 0x51:
 			return 1;
 		default:
 			return 0;
@@ -701,6 +701,10 @@ void PetAction_Judgmengt(uint8_t Serial_type)
 			case 0x50://显示电量
 				Battery_Bit^=1;
 				break;
+			case 0x51://显示天气（语音通道）
+				Face_Mode=7;
+				Action_Mode=2;   /*站起来，否则动作阻塞时天气刷不出来*/
+				break;
 			default:
 				break;
 		}
@@ -799,6 +803,11 @@ void PetAction_Judgmengt(uint8_t Serial_type)
 				break;
 			case 0x50://显示电量
 				Battery_Bit^=1;
+				break;
+			case 0x51://显示天气（蓝牙通道）
+				Sustainedmove=0; /*必须关掉持续运动，否则正在走的动作会把屏幕刷新卡住*/
+				Face_Mode=7;
+				Action_Mode=2;
 				break;
 			default:
 				break;

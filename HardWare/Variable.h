@@ -37,4 +37,10 @@ extern uint16_t CurBattery;      //当前电量（滤波后的平均值）
 extern uint8_t Battery_num;      //获取电量滤波系数
 extern uint8_t Battery_Bit;
 
+/*天气相关（手机通过蓝牙下发，解析见 Weather.c）*/
+extern uint8_t Weather_Valid;    //1=已有有效天气数据
+extern uint8_t Weather_Code;     //天气类型 0..9
+extern int8_t  Weather_Temp;     //温度（℃）
+extern uint8_t Weather_Hum;      //湿度（%）
+
 #endif

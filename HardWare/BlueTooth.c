@@ -3,6 +3,7 @@
 #include "PetAction.h"
 #include "Face_Config.h"
 #include "Variable.h"
+#include "Weather.h"
 
 void BlueTooth_Init(void)
 {
@@ -62,6 +63,13 @@ void USART3_IRQHandler(void)
 	if(USART_GetITStatus(USART3,USART_IT_RXNE)==SET)//如果接受到
 	{
 		RxData_Blue=USART_ReceiveData(USART3);
+		/*【天气帧】以 AA 55 开头的帧由 Weather 模块整帧收集并消费，
+		  不能进入下面的单字节指令分支，否则帧里的数据字节会被当成命令误触发动作*/
+		if(Weather_OnByte((uint8_t)RxData_Blue))
+		{
+			USART_ClearITPendingBit(USART3,USART_IT_RXNE);
+			return;
+		}
 		/*动作判断*/
 	  PetAction_Judgmengt(1);
 		
