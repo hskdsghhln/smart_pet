@@ -7,7 +7,7 @@ $chars = @()
 foreach ($c in $cps) { $chars += [string][char]$c }
 
 $fontName = "SimSun"
-$fontSize = 12
+$fontSize = 14
 $flags = [System.Windows.Forms.TextFormatFlags]::NoPadding -bor `
          [System.Windows.Forms.TextFormatFlags]::HorizontalCenter -bor `
          [System.Windows.Forms.TextFormatFlags]::VerticalCenter -bor `

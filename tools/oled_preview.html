@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>桌宠 OLED 天气表情预览</title>
+<style>
+  :root{
+    --bg:#0b0f14; --card:#141a22; --line:#243040; --text:#e6edf5;
+    --muted:#8b9aac; --accent:#3b82f6; --cell:4px;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font:14px/1.6 -apple-system,"Segoe UI","Microsoft YaHei",sans-serif;
+    padding:24px;
+  }
+  h1{font-size:18px;margin:0 0 4px}
+  .sub{color:var(--muted);font-size:12px;margin-bottom:20px}
+  .wrap{display:flex;gap:24px;flex-wrap:wrap;align-items:flex-start}
+  .panel{
+    background:var(--card); border:1px solid var(--line);
+    border-radius:14px; padding:18px;
+  }
+  .bezel{
+    background:#000; border-radius:8px; padding:10px;
+    border:1px solid #2a3542; display:inline-block;
+    box-shadow:0 0 0 3px #0a0d11, 0 12px 30px rgba(0,0,0,.6);
+  }
+  #screen{position:relative; display:block; line-height:0}
+  #oled{
+    display:block; width:calc(128 * var(--cell)); height:calc(64 * var(--cell));
+    image-rendering:pixelated; border-radius:2px;
+  }
+  #screen.grid::after{
+    content:''; position:absolute; inset:0; pointer-events:none;
+    background-image:
+      linear-gradient(to right, rgba(120,200,255,.16) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(120,200,255,.16) 1px, transparent 1px);
+    background-size: var(--cell) var(--cell);
+  }
+  .caption{color:var(--muted); font-size:12px; margin-top:10px; text-align:center}
+  .ctrl{min-width:300px}
+  .row{display:flex; align-items:center; gap:10px; margin-bottom:12px}
+  .row label{width:64px; color:var(--muted); font-size:13px; flex:none}
+  select,input[type=number]{
+    background:#0e141b; color:var(--text); border:1px solid var(--line);
+    border-radius:8px; padding:6px 8px; font-size:13px; width:100%;
+  }
+  input[type=range]{width:100%; accent-color:var(--accent)}
+  .presets{display:flex; flex-wrap:wrap; gap:8px; margin-top:6px}
+  button{
+    background:#1d2632; color:var(--text); border:1px solid var(--line);
+    border-radius:8px; padding:6px 12px; font-size:12px; cursor:pointer;
+  }
+  button:hover{background:#28323f}
+  button.on{background:var(--accent); border-color:var(--accent); color:#fff}
+  .frame{
+    font-family:ui-monospace,Consolas,monospace; font-size:12px;
+    background:#0e141b; border:1px solid var(--line); border-radius:8px;
+    padding:10px 12px; margin-top:14px; color:#7ce3ff; word-break:break-all;
+  }
+  .note{
+    margin-top:22px; color:var(--muted); font-size:12px; line-height:1.8;
+    border-top:1px solid var(--line); padding-top:14px; max-width:900px;
+  }
+  .note code{color:#9fd0ff; background:#0e141b; padding:1px 5px; border-radius:4px}
+  table{border-collapse:collapse; margin-top:8px; font-size:12px}
+  td{border:1px solid var(--line); padding:3px 10px; color:var(--muted)}
+  td:first-child{color:var(--text)}
+</style>
+</head>
+<body>
+
+<h1>桌宠 OLED 天气表情预览</h1>
+<div class="sub">
+  用固件里真实的字模数据渲染，布局与 <code>Face_Config.c</code> 的 <code>case 7</code> 逐行对应。
+  屏幕 128×64，与实物 1:1 比例。
+</div>
+
+<div class="wrap">
+  <div class="panel">
+    <div class="bezel">
+      <div id="screen">
+        <canvas id="oled" width="128" height="64"></canvas>
+      </div>
+    </div>
+    <div class="caption" id="cap">多云 26C 60%</div>
+  </div>
+
+  <div class="panel ctrl">
+    <div class="row">
+      <label>数据</label>
+      <div style="display:flex;gap:8px">
+        <button id="bValid" class="on">有天气数据</button>
+        <button id="bNoData">无数据</button>
+      </div>
+    </div>
+
+    <div class="row">
+      <label>天气</label>
+      <select id="selCode"></select>
+    </div>
+
+    <div class="row">
+      <label>温度</label>
+      <input type="range" id="rTemp" min="-40" max="60" value="26">
+      <input type="number" id="nTemp" min="-40" max="60" value="26" style="width:70px;flex:none">
+    </div>
+
+    <div class="row">
+      <label>湿度</label>
+      <input type="range" id="rHum" min="0" max="100" value="60">
+      <input type="number" id="nHum" min="0" max="100" value="60" style="width:70px;flex:none">
+    </div>
+
+    <div class="row">
+      <label>缩放</label>
+      <div style="display:flex;gap:8px">
+        <button class="zoom" data-z="2">2×</button>
+        <button class="zoom on" data-z="4">4×</button>
+        <button class="zoom" data-z="6">6×</button>
+        <button class="zoom" data-z="8">8×</button>
+      </div>
+    </div>
+
+    <div class="row">
+      <label>网格</label>
+      <button id="bGrid">显示像素网格</button>
+    </div>
+
+    <div class="presets">
+      <button data-p="1,26,60">多云 26C 60%</button>
+      <button data-p="8,-5,100">雪 -5C 100%</button>
+      <button data-p="9,3,8">雾 3C 8%</button>
+      <button data-p="7,-40,0">雷阵雨 -40C 0%</button>
+      <button data-p="5,60,100">大雨 60C 100%</button>
+    </div>
+
+    <div class="frame" id="frame"></div>
+  </div>
+</div>
+
+<div class="note">
+  <b>这页在验证什么</b><br>
+  1. 汉字有没有正确取到字模（取不到会显示方框问号，说明 <code>OLED_CF16x16</code> 里没有这个字）。<br>
+  2. 三个行的位置和间距对不对（描述在 y=4，温度行 y=26，湿度行 y=44）。<br>
+  3. 数字位数变化时会不会和单位撞车（<code>C</code>、<code>%</code> 固定贴在 x=64）。<br><br>
+
+  <b>注意几个刻意的设计</b><br>
+  · 温度/湿度按实际位数右对齐，个位数不会显示成 <code>05</code>；<br>
+  · 湿度 100% 用 3 位，否则 <code>OLED_ShowNum</code> 的前导零补位会把它显示成 <code>00</code>（这是 江协 库的既有行为，电池那段专门判断过 <code>&gt;=100</code>）；<br>
+  · 负温度占 <code>-</code> + 两位，起点左移到 x=48。<br><br>
+
+  <b>坐标对照</b>
+  <table>
+    <tr><td>天气描述</td><td>y=2，按字数居中：x = (128 − 字数×16) / 2</td></tr>
+    <tr><td>温度</td><td>“温度” x=8,y=24；数值右对齐到 x=64；C 在 x=64</td></tr>
+    <tr><td>湿度</td><td>“湿度” x=8,y=46；数值右对齐到 x=64；% 在 x=64</td></tr>
+    <tr><td>无数据</td><td>“NO DATA” 8×16 字体，x=40,y=24</td></tr>
+  </table>
+</div>
+
+<script src="oled_data.js"></script>
+<script>
+"use strict";
+
+/* ---------- 显存 ---------- */
+const W = 128, H = 64;
+const pix = [];
+for (let y = 0; y < H; y++) pix.push(new Uint8Array(W));
+
+function clearAll() { for (let y = 0; y < H; y++) pix[y].fill(0); }
+
+function clearArea(x, y, w, h) {
+  for (let j = 0; j < h; j++) {
+    const yy = y + j;
+    if (yy < 0 || yy > 63) continue;
+    for (let i = 0; i < w; i++) {
+      const xx = x + i;
+      if (xx < 0 || xx > 127) continue;
+      pix[yy][xx] = 0;
+    }
+  }
+}
+
+/* 对应 OLED_ShowImage：先清空区域，再按 (page, column) 顺序逐列取字节，bit0 是该页顶行 */
+function showImage(x, y, w, h, data) {
+  clearArea(x, y, w, h);
+  const pages = Math.floor(h / 8);
+  for (let p = 0; p < pages; p++) {
+    for (let i = 0; i < w; i++) {
+      const b = data[p * w + i];
+      if (!b) continue;
+      for (let r = 0; r < 8; r++) {
+        if (b & (1 << r)) {
+          const px = x + i, py = y + p * 8 + r;
+          if (px >= 0 && px < W && py >= 0 && py < H) pix[py][px] = 1;
+        }
+      }
+    }
+  }
+}
+
+/* ---------- 字体封装 ---------- */
+function showChar(x, y, ch, size) {
+  const c = ch.charCodeAt(0);
+  if (c < 32 || c > 126) return;
+  const idx = c - 32;
+  if (size === 8) {
+    showImage(x, y, 8, 16, OLED_F8x16.slice(idx * 16, idx * 16 + 16));
+  } else {
+    showImage(x, y, 6, 8, OLED_F6x8.slice(idx * 6, idx * 6 + 6));
+  }
+}
+
+function showString(x, y, s, size) {
+  for (let i = 0; i < s.length; i++) showChar(x + i * size, y, s[i], size);
+}
+
+/* 对应 OLED_ShowNum：固定长度，高位补 0 */
+function showNum(x, y, num, len, size) {
+  for (let i = 0; i < len; i++) {
+    const d = Math.floor(num / Math.pow(10, len - i - 1)) % 10;
+    showChar(x + i * size, y, String(d), size);
+  }
+}
+
+function showChinese(x, y, s) {
+  const chars = Array.from(s);
+  for (let i = 0; i < chars.length; i++) {
+    const g = GLYPHS[chars[i].codePointAt(0)];
+    if (!g) {                 // 固件里找不到时画方框问号，这里用同样大小的空框示意
+      const box = new Array(32).fill(0);
+      for (let k = 0; k < 16; k++) { box[k] = 0xFF; box[16 + k] = 0xFF; }
+      box[0] = 0x01; box[15] = 0x01; box[16] = 0x80; box[31] = 0x80;
+      showImage(x + i * 16, y, 16, 16, box);
+      continue;
+    }
+    showImage(x + i * 16, y, 16, 16, g);
+  }
+}
+
+/* ---------- 与 Face_Config.c case 7 完全一致的布局 ---------- */
+const NAMES = ["晴", "多云", "阴", "小雨", "中雨", "大雨", "阵雨", "雷阵雨", "雪", "雾"];
+
+function renderWeather(valid, code, temp, hum) {
+  clearAll();
+  if (!valid) {
+    showString(40, 24, "NO DATA", 8);
+    return;
+  }
+
+  const txt = NAMES[code] || "晴";
+  const n = Array.from(txt).length;
+  showChinese(Math.floor((128 - n * 16) / 2), 2, txt);
+
+  showChinese(8, 24, "温度");
+  if (temp < 0) {
+    showChar(48, 24, "-", 8);
+    showNum(56, 24, -temp, 2, 8);
+  } else if (temp >= 10) {
+    showNum(48, 24, temp, 2, 8);
+  } else {
+    showNum(56, 24, temp, 1, 8);
+  }
+  showString(64, 24, "C", 8);
+
+  showChinese(8, 46, "湿度");
+  if (hum >= 100) {
+    showNum(40, 46, hum, 3, 8);
+  } else if (hum >= 10) {
+    showNum(48, 46, hum, 2, 8);
+  } else {
+    showNum(56, 46, hum, 1, 8);
+  }
+  showString(64, 46, "%", 8);
+}
+
+/* ---------- 画到 canvas ---------- */
+const cvs = document.getElementById("oled");
+const ctx = cvs.getContext("2d");
+
+function paint() {
+  const img = ctx.createImageData(W, H);
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const i = (y * W + x) * 4;
+      if (pix[y][x]) {
+        img.data[i] = 0x8f; img.data[i + 1] = 0xe8; img.data[i + 2] = 0xff;
+        img.data[i + 3] = 255;
+      } else {
+        img.data[i] = 6; img.data[i + 1] = 9; img.data[i + 2] = 13;
+        img.data[i + 3] = 255;
+      }
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+}
+
+/* ---------- 控件 ---------- */
+const selCode = document.getElementById("selCode");
+NAMES.forEach(function (nm, i) {
+  const o = document.createElement("option");
+  o.value = String(i);
+  o.textContent = i + "  " + nm;
+  selCode.appendChild(o);
+});
+
+let state = { valid: true, code: 1, temp: 26, hum: 60 };
+
+function update() {
+  renderWeather(state.valid, state.code, state.temp, state.hum);
+  paint();
+
+  document.getElementById("cap").textContent = state.valid
+    ? NAMES[state.code] + " " + state.temp + "C " + state.hum + "%"
+    : "无天气数据";
+
+  // 与 App 端 sendWeatherFrame() 同一套编码
+  const t = Math.max(0, Math.min(100, state.temp + 40));
+  const h = Math.max(0, Math.min(100, state.hum));
+  const c = Math.max(0, Math.min(9, state.code));
+  const f = [0xAA, 0x55, 0x03, c, t, h, 0];
+  f[6] = f[2] ^ f[3] ^ f[4] ^ f[5];
+  const hex = f.map(function (v) { return (v < 16 ? "0" : "") + v.toString(16).toUpperCase(); }).join(" ");
+  document.getElementById("frame").textContent =
+    state.valid ? "下发帧： " + hex : "无数据时不发帧（只显示 NO DATA）";
+}
+
+function syncInputs() {
+  document.getElementById("rTemp").value = state.temp;
+  document.getElementById("nTemp").value = state.temp;
+  document.getElementById("rHum").value = state.hum;
+  document.getElementById("nHum").value = state.hum;
+  selCode.value = String(state.code);
+}
+
+document.getElementById("bValid").onclick = function () {
+  state.valid = true; this.classList.add("on");
+  document.getElementById("bNoData").classList.remove("on");
+  update();
+};
+document.getElementById("bNoData").onclick = function () {
+  state.valid = false; this.classList.add("on");
+  document.getElementById("bValid").classList.remove("on");
+  update();
+};
+selCode.onchange = function () { state.code = parseInt(this.value, 10); update(); };
+
+document.getElementById("rTemp").oninput = function () {
+  state.temp = parseInt(this.value, 10);
+  document.getElementById("nTemp").value = state.temp;
+  update();
+};
+document.getElementById("nTemp").oninput = function () {
+  let v = parseInt(this.value, 10);
+  if (isNaN(v)) return;
+  state.temp = Math.max(-40, Math.min(60, v));
+  document.getElementById("rTemp").value = state.temp;
+  update();
+};
+document.getElementById("rHum").oninput = function () {
+  state.hum = parseInt(this.value, 10);
+  document.getElementById("nHum").value = state.hum;
+  update();
+};
+document.getElementById("nHum").oninput = function () {
+  let v = parseInt(this.value, 10);
+  if (isNaN(v)) return;
+  state.hum = Math.max(0, Math.min(100, v));
+  document.getElementById("rHum").value = state.hum;
+  update();
+};
+
+document.querySelectorAll(".zoom").forEach(function (b) {
+  b.onclick = function () {
+    document.querySelectorAll(".zoom").forEach(function (x) { x.classList.remove("on"); });
+    this.classList.add("on");
+    document.documentElement.style.setProperty("--cell", this.dataset.z + "px");
+  };
+});
+
+document.getElementById("bGrid").onclick = function () {
+  const s = document.getElementById("screen");
+  s.classList.toggle("grid");
+  this.classList.toggle("on");
+  this.textContent = s.classList.contains("grid") ? "隐藏像素网格" : "显示像素网格";
+};
+
+document.querySelectorAll("[data-p]").forEach(function (b) {
+  b.onclick = function () {
+    const p = this.dataset.p.split(",").map(Number);
+    state.valid = true;
+    state.code = p[0]; state.temp = p[1]; state.hum = p[2];
+    document.getElementById("bValid").classList.add("on");
+    document.getElementById("bNoData").classList.remove("on");
+    syncInputs();
+    update();
+  };
+});
+
+syncInputs();
+update();
+</script>
+</body>
+</html>

@@ -58,26 +58,41 @@ void Face_Config(void)
 					n++;
 				}
 				/*天气描述居中*/
-				OLED_ShowChinese((int16_t)((128 - n*16)/2), 4, (char*)txt);
+				OLED_ShowChinese((int16_t)((128 - n*16)/2), 2, (char*)txt);
 
-				/*温度*/
-				OLED_ShowChinese(8, 26, "温度");
+				/*温度：按位数右对齐到 x=64，"C" 固定贴在 64 上*/
+				OLED_ShowChinese(8, 24, "温度");
 				if(Weather_Temp < 0)
 				{
-					OLED_ShowChar(48, 26, '-', OLED_8X16);
-					OLED_ShowNum(56, 26, (uint16_t)(-(int16_t)Weather_Temp), 2, OLED_8X16);
-					OLED_ShowString(72, 26, "C", OLED_8X16);
+					OLED_ShowChar(48, 24, '-', OLED_8X16);
+					OLED_ShowNum(56, 24, (uint16_t)(-(int16_t)Weather_Temp), 2, OLED_8X16);
+				}
+				else if(Weather_Temp >= 10)
+				{
+					OLED_ShowNum(48, 24, (uint16_t)Weather_Temp, 2, OLED_8X16);
 				}
 				else
 				{
-					OLED_ShowNum(48, 26, (uint16_t)Weather_Temp, 2, OLED_8X16);
-					OLED_ShowString(64, 26, "C", OLED_8X16);
+					OLED_ShowNum(56, 24, (uint16_t)Weather_Temp, 1, OLED_8X16);
 				}
+				OLED_ShowString(64, 24, "C", OLED_8X16);
 
-				/*湿度*/
-				OLED_ShowChinese(8, 44, "湿度");
-				OLED_ShowNum(48, 44, Weather_Hum, 2, OLED_8X16);
-				OLED_ShowString(64, 44, "%", OLED_8X16);
+				/*湿度：OLED_ShowNum 用前导零补位，100% 按 2 位会显示成 "00"，
+				  所以按实际位数右对齐（电池那段专门判断 >=100 也是这个原因）*/
+				OLED_ShowChinese(8, 46, "湿度");
+				if(Weather_Hum >= 100)
+				{
+					OLED_ShowNum(40, 46, Weather_Hum, 3, OLED_8X16);
+				}
+				else if(Weather_Hum >= 10)
+				{
+					OLED_ShowNum(48, 46, Weather_Hum, 2, OLED_8X16);
+				}
+				else
+				{
+					OLED_ShowNum(56, 46, Weather_Hum, 1, OLED_8X16);
+				}
+				OLED_ShowString(64, 46, "%", OLED_8X16);
 			}
 			break;
 		}
