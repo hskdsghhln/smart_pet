@@ -1,0 +1,39 @@
+# ---------- Keil MDK 构建输出 ----------
+Objects/
+Listings/
+*.uvguix.*
+*.uvoptx
+*.bak
+*.dep
+*.crf
+*.o
+*.d
+*.axf
+*.hex
+*.bin
+*.map
+*.lst
+*.lnp
+*.sct
+*.iex
+*.build_log.htm
+*.htm
+
+# ---------- EIDE 构建输出 ----------
+EIDE/build/
+
+# ---------- EIDE 本地工具包缓存（可由 EIDE 自动重新下载，仅忽略追踪，不删文件） ----------
+EIDE/.cmsis/
+EIDE/.pack/
+
+# ---------- 临时 / 调试产物 ----------
+_*.log
+_*.png
+_*.jpg
+_*.ps1
+_*.txt
+
+# ---------- 系统文件 ----------
+Thumbs.db
+desktop.ini
+.DS_Store
