@@ -33,6 +33,11 @@ _*.jpg
 _*.ps1
 _*.txt
 
+# ---------- Android 上位机 ----------
+AndroidApp/build/
+AndroidApp/*.apk
+*.idsig
+
 # ---------- 系统文件 ----------
 Thumbs.db
 desktop.ini
