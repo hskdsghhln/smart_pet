@@ -58,6 +58,20 @@ void BlueTooth_Init(void)
 	USART_Cmd(USART3,ENABLE);//USART3使能打开
 }
 
+void BlueTooth_SendByte(uint8_t b)
+{
+	/* 等发送寄存器空再写，否则会覆盖还没移出去的字节。
+	   TXE 正常情况下一进来就是置位的，只有上一个字节还没发完才会短暂等待
+	   （115200 下一个字节 87us）。加计数上限是为了防止模块没接、
+	   或 USART 配置异常时卡死在这里——这里可能在中断里被调用。*/
+	uint16_t guard = 0;
+	while((USART_GetFlagStatus(USART3, USART_FLAG_TXE) == RESET) && (guard < 20000))
+	{
+		guard++;
+	}
+	USART_SendData(USART3, b);
+}
+
 void USART3_IRQHandler(void)
 {
 	if(USART_GetITStatus(USART3,USART_IT_RXNE)==SET)//如果接受到

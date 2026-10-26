@@ -85,6 +85,10 @@ public class MainActivity extends Activity {
     private static final int REQ_PERM = 1;
     private static final int REQ_ENABLE = 2;
     private static final int REQ_LOC = 3;
+
+    /* 桌宠 -> 手机（FFF1 通知）：请求同步天气。
+       对应固件 Weather.h 的 WEATHER_REQ_SYNC。 */
+    private static final int BYTE_REQ_WEATHER = 0x57;
     private static final int MAX_LOG_LINES = 60;
     private static final long SCAN_TIMEOUT_MS = 12000L;
 
@@ -169,6 +173,7 @@ public class MainActivity extends Activity {
 
     private final Handler ui = new Handler(Looper.getMainLooper());
     private final ExecutorService io = Executors.newSingleThreadExecutor();
+    private volatile boolean weatherBusy;   // 防止连续触发时排队发多次请求
     private final SimpleDateFormat ts = new SimpleDateFormat("HH:mm:ss", Locale.US);
     private final StringBuilder logBuf = new StringBuilder();
 
@@ -706,11 +711,59 @@ public class MainActivity extends Activity {
                         d.setValue(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE);
                         g.writeDescriptor(d);
                     }
+                    ui.post(new Runnable() {
+                        @Override
+                        public void run() {
+                            appendLog("已订阅 FFF1 通知（桌宠可以主动发消息过来）");
+                        }
+                    });
                 } catch (Exception ignore) {
                 }
             }
         }
+
+        /* 桌宠 -> 手机。目前唯一的用途：语音说「天气」时板子发 0x57 过来，
+           App 收到后自动定位取天气，再把帧写回去。
+           API 33 起走带 byte[] 的新回调，两个都重写以兼容新老系统。 */
+        @Override
+        public void onCharacteristicChanged(BluetoothGatt g, BluetoothGattCharacteristic c) {
+            postNotify(c.getValue());
+        }
+
+        @Override
+        public void onCharacteristicChanged(BluetoothGatt g, BluetoothGattCharacteristic c, byte[] value) {
+            postNotify(value);
+        }
     };
+
+    /** 通知回调在 binder 线程，统一扔回主线程处理 */
+    private void postNotify(byte[] v) {
+        if (v == null || v.length == 0) {
+            return;
+        }
+        final byte[] copy = v.clone();
+        ui.post(new Runnable() {
+            @Override
+            public void run() {
+                handleNotify(copy);
+            }
+        });
+    }
+
+    private void handleNotify(byte[] v) {
+        for (byte b : v) {
+            if ((b & 0xFF) == BYTE_REQ_WEATHER) {
+                appendLog("← 桌宠请求同步天气（语音触发）");
+                if (ready) {
+                    syncWeather();
+                } else {
+                    appendLog("× 还没连上，无法同步天气");
+                }
+                return;
+            }
+        }
+        appendLog("← 收到 " + toHex(v) + "（未识别的消息）");
+    }
 
     /* ================= 发送 ================= */
 
@@ -786,6 +839,10 @@ public class MainActivity extends Activity {
     }
 
     private void syncWeather() {
+        if (weatherBusy) {
+            appendLog("上次天气同步还没结束，忽略这次请求");
+            return;
+        }
         if (!ready || gatt == null || writeChar == null) {
             toast(getString(R.string.need_connect));
             return;
@@ -796,11 +853,16 @@ public class MainActivity extends Activity {
             requestPermissions(new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, REQ_LOC);
             return;
         }
+        weatherBusy = true;
         appendLog("正在定位并获取天气 …");
         io.execute(new Runnable() {
             @Override
             public void run() {
-                doWeatherSync();
+                try {
+                    doWeatherSync();
+                } finally {
+                    weatherBusy = false;
+                }
             }
         });
     }

@@ -4,6 +4,7 @@
 #include "BlueTooth.h"
 #include "Variable.h"
 #include "Timer.h"
+#include "Weather.h"
 
 /*==============================================================================
  * 本文件按「180° 位置舵机（SG90）」重写
@@ -702,6 +703,13 @@ void PetAction_Judgmengt(uint8_t Serial_type)
 				Battery_Bit^=1;
 				break;
 			case 0x51://显示天气（语音通道）
+				/*【先同步再显示】桌宠自己不联网，天气只能由手机去取。
+				   这里先通过蓝牙给手机发一个"请求同步"字节，手机收到后
+				   自动定位 -> 请求接口 -> 把天气帧发回来。
+				   Face_Config 是 30ms 周期的任务，帧一到下一个周期就会刷新，
+				   所以这里不用阻塞等待（等蓝牙会让整个调度停摆）。
+				   手机没连着的话，就停留在上一次的数据或 NO DATA。*/
+				BlueTooth_SendByte(WEATHER_REQ_SYNC);
 				Face_Mode=7;
 				Action_Mode=2;   /*站起来，否则动作阻塞时天气刷不出来*/
 				break;
