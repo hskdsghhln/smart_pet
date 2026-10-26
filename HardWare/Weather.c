@@ -3,7 +3,10 @@
 
 #define WEATHER_HEAD1       0xAA
 #define WEATHER_HEAD2       0x55
-#define WEATHER_PAYLOAD     5
+/* payload 字节数（CODE + TMIN + TMAX + HUM = 4），不含帧头/LEN/校验。
+   注意别和"校验覆盖的项数"搞混：XOR = LEN ^ CODE ^ TMIN ^ TMAX ^ HUM，
+   算的是 5 项，但 payload 只有 4 个字节。 */
+#define WEATHER_PAYLOAD     4
 
 /* 解析状态机 */
 #define WX_IDLE             0
@@ -85,6 +88,14 @@ uint8_t Weather_OnByte(uint8_t b)
 			return 1;
 
 		case WX_PAYLOAD:
+			/* 帧中途又出现 0xAA：说明上一帧被截断了（丢字节/连写被拆包），
+			   直接把它当成新帧的头，否则会一直错位下去。
+			   payload 只可能是 0..100 的数值，合法数据里不会出现 0xAA。 */
+			if(b == WEATHER_HEAD1)
+			{
+				Wx_State = WX_HEAD2;
+				return 1;
+			}
 			Wx_Buf[Wx_Idx] = b;
 			Wx_Idx++;
 			if(Wx_Idx >= Wx_Len)
@@ -94,12 +105,17 @@ uint8_t Weather_OnByte(uint8_t b)
 			return 1;
 
 		case WX_CHECK:
+			if(b == WEATHER_HEAD1)
+			{
+				Wx_State = WX_HEAD2;
+				return 1;
+			}
 			x = Wx_Len;
 			for(i = 0; i < Wx_Len; i++)
 			{
 				x ^= Wx_Buf[i];
 			}
-			/* 校验通过且长度正好是 5 才采用。
+			/* 校验通过且长度正好是 4 才采用。
 			   长度不对的帧（比如旧版只有 TEMP 的 3 字节帧）在上面的状态机里
 			   已经被完整吃掉，不会漏到指令通道去，这里只是不采信而已。 */
 			if((x == b) && (Wx_Len == WEATHER_PAYLOAD))

@@ -310,12 +310,12 @@ function update() {
     ? NAMES[state.code] + " " + state.tmin + "~" + state.tmax + "C " + state.hum + "%"
     : "无天气数据";
 
-  // 与 App 端 sendWeatherFrame() 同一套编码：AA 55 05 CODE TMIN TMAX HUM XOR
+  // 与 App 端 sendWeatherFrame() 同一套编码：AA 55 04 CODE TMIN TMAX HUM XOR
   const t1 = Math.max(0, Math.min(100, state.tmin + 40));
   const t2 = Math.max(0, Math.min(100, state.tmax + 40));
   const h = Math.max(0, Math.min(100, state.hum));
   const c = Math.max(0, Math.min(9, state.code));
-  const f = [0xAA, 0x55, 0x05, c, t1, t2, h, 0];
+  const f = [0xAA, 0x55, 0x04, c, t1, t2, h, 0];
   f[7] = f[2] ^ f[3] ^ f[4] ^ f[5] ^ f[6];
   const hex = f.map(function (v) { return (v < 16 ? "0" : "") + v.toString(16).toUpperCase(); }).join(" ");
   document.getElementById("frame").textContent =

@@ -6,13 +6,16 @@
 /*----------------------------------------------------------------------------
   天气帧（手机 --蓝牙--> STM32）
 
-  格式：  AA 55 LEN CODE TMIN TMAX HUM XOR
-    LEN  = 5（后面跟着 5 个数据字节）
+  格式：  AA 55 LEN CODE TMIN TMAX HUM XOR        （共 8 字节）
+    LEN  = 4（后面跟着 4 个数据字节：CODE TMIN TMAX HUM）
     CODE = 天气类型 0..9，见 Weather_GetText()
     TMIN = 当天最低温 + 40（0x00 表示 -40℃，0x64 表示 +60℃）
     TMAX = 当天最高温 + 40
     HUM  = 湿度 0..100（%）
     XOR  = LEN ^ CODE ^ TMIN ^ TMAX ^ HUM
+
+  注意 LEN 数的是 payload 字节数（4），而 XOR 覆盖 5 项（LEN + 4 个 payload），
+  这两个数字不一样，别混。
 
   为什么不用纯文本：单字节指令通道（0x29~0x51）按字节立刻执行，
   多字节文本里的每个字节都会被当成一条命令。所以天气必须走带帧头的

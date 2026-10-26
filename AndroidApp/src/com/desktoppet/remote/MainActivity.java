@@ -1025,7 +1025,8 @@ public class MainActivity extends Activity {
         return got[0] != null ? got[0] : best;
     }
 
-    /** 组帧 AA 55 05 CODE TMIN TMAX HUM XOR 并写入 FFF2 */
+    /** 组帧 AA 55 04 CODE TMIN TMAX HUM XOR 并写入 FFF2
+     *  LEN 数的是 payload 字节数（4 个），而 XOR 覆盖 LEN + 4 个 payload 共 5 项。 */
     @SuppressLint("MissingPermission")
     private void sendWeatherFrame(int code, int tminC, int tmaxC, int hum) {
         if (!ready || gatt == null || writeChar == null) {
@@ -1041,7 +1042,7 @@ public class MainActivity extends Activity {
         byte[] f = new byte[8];
         f[0] = (byte) 0xAA;
         f[1] = (byte) 0x55;
-        f[2] = (byte) 5;
+        f[2] = (byte) 4;
         f[3] = (byte) c;
         f[4] = (byte) t1;
         f[5] = (byte) t2;
