@@ -4,6 +4,29 @@
 #include "Variable.h"
 #include "Weather.h"
 
+/* 把整数追加到字符串末尾，返回新的长度。
+   OLED_ShowNum 会按固定长度取位、高位补零（5 显示成 "05"，100 按 2 位显示成 "00"），
+   天气这里数值长短不定，所以自己转字符，按实际位数输出。 */
+static uint8_t Face_NumAppend(char *dst, uint8_t n, int16_t v)
+{
+	uint16_t u;
+	if(v < 0)
+	{
+		dst[n++] = '-';
+		u = (uint16_t)(-v);
+	}
+	else
+	{
+		u = (uint16_t)v;
+	}
+	if(u >= 10)
+	{
+		dst[n++] = (char)('0' + (u / 10) % 10);
+	}
+	dst[n++] = (char)('0' + (u % 10));
+	return n;
+}
+
 //实现表情变化，调节是进中断后
 void Face_Config(void)
 {
@@ -53,6 +76,8 @@ void Face_Config(void)
 			{
 				const char* txt = Weather_GetText();
 				uint8_t n = 0;
+				char buf[12];
+				uint8_t len;
 				while(txt[n*3] != '\0')
 				{
 					n++;
@@ -60,34 +85,23 @@ void Face_Config(void)
 				/*天气描述居中*/
 				OLED_ShowChinese((int16_t)((128 - n*16)/2), 2, (char*)txt);
 
-				/*温度：数值右对齐收尾于 x=71，"C" 固定贴在 x=72*/
+				/*温度区间，左对齐于 x=48，形如 24~29C，最宽 -15~-8C 共 7 字符(56px)*/
 				OLED_ShowChinese(8, 24, "温度");
-				{
-					int16_t t = Weather_Temp;
-					uint8_t len;
-					if(t < 0)
-					{
-						len = (uint8_t)((t <= -10) ? 2 : 1);
-						OLED_ShowChar((int16_t)(72 - 8 - len*8), 24, '-', OLED_8X16);
-						OLED_ShowNum((int16_t)(72 - len*8), 24, (uint16_t)(-t), len, OLED_8X16);
-					}
-					else
-					{
-						len = (uint8_t)((t >= 10) ? 2 : 1);
-						OLED_ShowNum((int16_t)(72 - len*8), 24, (uint16_t)t, len, OLED_8X16);
-					}
-				}
-				OLED_ShowString(72, 24, "C", OLED_8X16);
+				len = 0;
+				len = Face_NumAppend(buf, len, (int16_t)Weather_Tmin);
+				buf[len++] = '~';
+				len = Face_NumAppend(buf, len, (int16_t)Weather_Tmax);
+				buf[len++] = 'C';
+				buf[len] = '\0';
+				OLED_ShowString(48, 24, buf, OLED_8X16);
 
-				/*湿度：同上，按实际位数右对齐。
-				  必须是实际位数——OLED_ShowNum 会用前导零补位，
-				  100% 按 2 位算出来是 "00"（电池那段专门判断 >=100 也是这个原因）*/
+				/*湿度，同样左对齐于 x=48*/
 				OLED_ShowChinese(8, 46, "湿度");
-				{
-					uint8_t len = (uint8_t)((Weather_Hum >= 100) ? 3 : ((Weather_Hum >= 10) ? 2 : 1));
-					OLED_ShowNum((int16_t)(72 - len*8), 46, Weather_Hum, len, OLED_8X16);
-				}
-				OLED_ShowString(72, 46, "%", OLED_8X16);
+				len = 0;
+				len = Face_NumAppend(buf, len, (int16_t)Weather_Hum);
+				buf[len++] = '%';
+				buf[len] = '\0';
+				OLED_ShowString(48, 46, buf, OLED_8X16);
 			}
 			break;
 		}

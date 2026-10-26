@@ -40,7 +40,8 @@ extern uint8_t Battery_Bit;
 /*天气相关（手机通过蓝牙下发，解析见 Weather.c）*/
 extern uint8_t Weather_Valid;    //1=已有有效天气数据
 extern uint8_t Weather_Code;     //天气类型 0..9
-extern int8_t  Weather_Temp;     //温度（℃）
+extern int8_t  Weather_Tmin;     //当天最低温（℃）
+extern int8_t  Weather_Tmax;     //当天最高温（℃）
 extern uint8_t Weather_Hum;      //湿度（%）
 
 #endif

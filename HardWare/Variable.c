@@ -41,5 +41,6 @@ uint8_t Battery_Bit=1;
 /*天气相关*/
 uint8_t Weather_Valid=0;         //1=已有有效天气数据
 uint8_t Weather_Code=0;          //天气类型 0..9
-int8_t  Weather_Temp=0;          //温度（℃）
+int8_t  Weather_Tmin=0;          //当天最低温（℃）
+int8_t  Weather_Tmax=0;          //当天最高温（℃）
 uint8_t Weather_Hum=0;           //湿度（%）

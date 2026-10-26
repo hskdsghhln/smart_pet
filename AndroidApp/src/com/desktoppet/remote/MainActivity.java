@@ -816,13 +816,16 @@ public class MainActivity extends Activity {
                 loc.getLatitude(), loc.getLongitude()));
 
         int code = 1;
-        int tempC = 0;
+        int tminC = 0;
+        int tmaxC = 0;
         int hum = 0;
         HttpURLConnection conn = null;
         try {
             String url = String.format(Locale.US,
                     "https://api.open-meteo.com/v1/forecast?latitude=%.4f&longitude=%.4f"
-                            + "&current=temperature_2m,relative_humidity_2m,weather_code",
+                            + "&current=temperature_2m,relative_humidity_2m,weather_code"
+                            + "&daily=temperature_2m_min,temperature_2m_max"
+                            + "&timezone=auto&forecast_days=1",
                     loc.getLatitude(), loc.getLongitude());
 
             conn = (HttpURLConnection) new URL(url).openConnection();
@@ -845,10 +848,26 @@ public class MainActivity extends Activity {
             }
             in.close();
 
-            JSONObject cur = new JSONObject(bo.toString("UTF-8")).getJSONObject("current");
+            JSONObject root = new JSONObject(bo.toString("UTF-8"));
+            JSONObject cur = root.getJSONObject("current");
             code = mapWeatherCode(cur.optInt("weather_code", 0));
-            tempC = (int) Math.round(cur.getDouble("temperature_2m"));
             hum = cur.optInt("relative_humidity_2m", 0);
+
+            // 当天温度区间取 daily 里的最低/最高，取不到就退回当前温度
+            tminC = (int) Math.round(cur.getDouble("temperature_2m"));
+            tmaxC = tminC;
+            try {
+                JSONObject daily = root.getJSONObject("daily");
+                tminC = (int) Math.round(daily.getJSONArray("temperature_2m_min").getDouble(0));
+                tmaxC = (int) Math.round(daily.getJSONArray("temperature_2m_max").getDouble(0));
+            } catch (Exception ignore) {
+                // 没有 daily 字段时用当前温度占位
+            }
+            if (tminC > tmaxC) {
+                int t = tminC;
+                tminC = tmaxC;
+                tmaxC = t;
+            }
         } catch (Exception e) {
             postLog("× 获取天气失败：" + e.getClass().getSimpleName());
             return;
@@ -859,12 +878,13 @@ public class MainActivity extends Activity {
         }
 
         final int fCode = code;
-        final int fTemp = tempC;
+        final int fTmin = tminC;
+        final int fTmax = tmaxC;
         final int fHum = hum;
         ui.post(new Runnable() {
             @Override
             public void run() {
-                sendWeatherFrame(fCode, fTemp, fHum);
+                sendWeatherFrame(fCode, fTmin, fTmax, fHum);
             }
         });
     }
@@ -943,26 +963,28 @@ public class MainActivity extends Activity {
         return got[0] != null ? got[0] : best;
     }
 
-    /** 组帧 AA 55 03 CODE TEMP HUM XOR 并写入 FFF2 */
+    /** 组帧 AA 55 05 CODE TMIN TMAX HUM XOR 并写入 FFF2 */
     @SuppressLint("MissingPermission")
-    private void sendWeatherFrame(int code, int tempC, int hum) {
+    private void sendWeatherFrame(int code, int tminC, int tmaxC, int hum) {
         if (!ready || gatt == null || writeChar == null) {
             appendLog("× 连接已断开，天气未下发");
             return;
         }
 
         int c = Math.max(0, Math.min(9, code));
-        int t = Math.max(0, Math.min(100, tempC + 40));
+        int t1 = Math.max(0, Math.min(100, tminC + 40));
+        int t2 = Math.max(0, Math.min(100, tmaxC + 40));
         int h = Math.max(0, Math.min(100, hum));
 
-        byte[] f = new byte[7];
+        byte[] f = new byte[8];
         f[0] = (byte) 0xAA;
         f[1] = (byte) 0x55;
-        f[2] = (byte) 3;
+        f[2] = (byte) 5;
         f[3] = (byte) c;
-        f[4] = (byte) t;
-        f[5] = (byte) h;
-        f[6] = (byte) (f[2] ^ f[3] ^ f[4] ^ f[5]);
+        f[4] = (byte) t1;
+        f[5] = (byte) t2;
+        f[6] = (byte) h;
+        f[7] = (byte) (f[2] ^ f[3] ^ f[4] ^ f[5] ^ f[6]);
 
         boolean ok;
         try {
@@ -981,7 +1003,7 @@ public class MainActivity extends Activity {
 
         String name = WEATHER_NAMES[c];
         if (ok) {
-            appendLog("→ 天气 " + name + " " + tempC + "C " + hum + "%  帧 " + toHex(f));
+            appendLog("→ 天气 " + name + " " + tminC + "~" + tmaxC + "C " + hum + "%  帧 " + toHex(f));
             appendLog("提示：按「显示天气」或对桌宠说「天气」切到天气表情");
         } else {
             appendLog("× 天气帧写入失败（GATT 忙或连接已断）");

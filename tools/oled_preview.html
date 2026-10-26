@@ -103,9 +103,15 @@
     </div>
 
     <div class="row">
-      <label>温度</label>
-      <input type="range" id="rTemp" min="-40" max="60" value="26">
-      <input type="number" id="nTemp" min="-40" max="60" value="26" style="width:70px;flex:none">
+      <label>最低温</label>
+      <input type="range" id="rTmin" min="-40" max="60" value="24">
+      <input type="number" id="nTmin" min="-40" max="60" value="24" style="width:70px;flex:none">
+    </div>
+
+    <div class="row">
+      <label>最高温</label>
+      <input type="range" id="rTmax" min="-40" max="60" value="29">
+      <input type="number" id="nTmax" min="-40" max="60" value="29" style="width:70px;flex:none">
     </div>
 
     <div class="row">
@@ -130,11 +136,11 @@
     </div>
 
     <div class="presets">
-      <button data-p="1,26,60">多云 26C 60%</button>
-      <button data-p="8,-5,100">雪 -5C 100%</button>
-      <button data-p="9,3,8">雾 3C 8%</button>
-      <button data-p="7,-40,0">雷阵雨 -40C 0%</button>
-      <button data-p="5,60,100">大雨 60C 100%</button>
+      <button data-p="1,24,29,60">多云 24~29C 60%</button>
+      <button data-p="8,-5,3,100">雪 -5~3C 100%</button>
+      <button data-p="9,3,3,8">雾 3~3C 8%</button>
+      <button data-p="7,-40,-35,0">雷阵雨 -40~-35C 0%</button>
+      <button data-p="5,45,60,100">大雨 45~60C 100%</button>
     </div>
 
     <div class="frame" id="frame"></div>
@@ -144,19 +150,20 @@
 <div class="note">
   <b>这页在验证什么</b><br>
   1. 汉字有没有正确取到字模（取不到会显示方框问号，说明 <code>OLED_CF16x16</code> 里没有这个字）。<br>
-  2. 三个行的位置和间距对不对（描述在 y=4，温度行 y=26，湿度行 y=44）。<br>
-  3. 数字位数变化时会不会和单位撞车（<code>C</code>、<code>%</code> 固定贴在 x=64）。<br><br>
+  2. 三个行的位置和间距对不对（描述 y=2，温度行 y=24，湿度行 y=46）。<br>
+  3. 温度区间长短变化时会不会顶到“温度”两个字（最宽是 <code>-15~-8C</code>，7 个字符 56px）。<br><br>
 
   <b>注意几个刻意的设计</b><br>
-  · 温度/湿度按实际位数右对齐，个位数不会显示成 <code>05</code>；<br>
-  · 湿度 100% 用 3 位，否则 <code>OLED_ShowNum</code> 的前导零补位会把它显示成 <code>00</code>（这是 江协 库的既有行为，电池那段专门判断过 <code>&gt;=100</code>）；<br>
-  · 负温度占 <code>-</code> + 两位，起点左移到 x=48。<br><br>
+  · 数值按实际位数输出，个位数不会显示成 <code>05</code>；<br>
+  · 不用 <code>OLED_ShowNum</code> 是因为它按固定长度取位、高位补零（100% 按 2 位会变成 <code>00</code>），
+    所以固件里自己写了 <code>Face_NumAppend()</code> 转字符；<br>
+  · 数值左对齐于 x=48，因为温度区间的长度不固定，右对齐会让“温度”和数值之间的空隙忽大忽小。<br><br>
 
   <b>坐标对照</b>
   <table>
     <tr><td>天气描述</td><td>y=2，按字数居中：x = (128 − 字数×16) / 2</td></tr>
-    <tr><td>温度</td><td>“温度” x=8,y=24；数值右对齐到 x=64；C 在 x=64</td></tr>
-    <tr><td>湿度</td><td>“湿度” x=8,y=46；数值右对齐到 x=64；% 在 x=64</td></tr>
+    <tr><td>温度区间</td><td>“温度” x=8,y=24；数值左对齐 x=48</td></tr>
+    <tr><td>湿度</td><td>“湿度” x=8,y=46；数值左对齐 x=48</td></tr>
     <tr><td>无数据</td><td>“NO DATA” 8×16 字体，x=40,y=24</td></tr>
   </table>
 </div>
@@ -244,7 +251,7 @@ function showChinese(x, y, s) {
 /* ---------- 与 Face_Config.c case 7 完全一致的布局 ---------- */
 const NAMES = ["晴", "多云", "阴", "小雨", "中雨", "大雨", "阵雨", "雷阵雨", "雪", "雾"];
 
-function renderWeather(valid, code, temp, hum) {
+function renderWeather(valid, code, tmin, tmax, hum) {
   clearAll();
   if (!valid) {
     showString(40, 24, "NO DATA", 8);
@@ -255,21 +262,12 @@ function renderWeather(valid, code, temp, hum) {
   const n = Array.from(txt).length;
   showChinese(Math.floor((128 - n * 16) / 2), 2, txt);
 
+  // 与固件 Face_NumAppend() 一致：负号 + 实际位数，不补前导零
   showChinese(8, 24, "温度");
-  if (temp < 0) {
-    const len = temp <= -10 ? 2 : 1;
-    showChar(72 - 8 - len * 8, 24, "-", 8);
-    showNum(72 - len * 8, 24, -temp, len, 8);
-  } else {
-    const len = temp >= 10 ? 2 : 1;
-    showNum(72 - len * 8, 24, temp, len, 8);
-  }
-  showString(72, 24, "C", 8);
+  showString(48, 24, tmin + "~" + tmax + "C", 8);
 
   showChinese(8, 46, "湿度");
-  const hl = hum >= 100 ? 3 : (hum >= 10 ? 2 : 1);
-  showNum(72 - hl * 8, 46, hum, hl, 8);
-  showString(72, 46, "%", 8);
+  showString(48, 46, hum + "%", 8);
 }
 
 /* ---------- 画到 canvas ---------- */
@@ -302,30 +300,33 @@ NAMES.forEach(function (nm, i) {
   selCode.appendChild(o);
 });
 
-let state = { valid: true, code: 1, temp: 26, hum: 60 };
+let state = { valid: true, code: 1, tmin: 24, tmax: 29, hum: 60 };
 
 function update() {
-  renderWeather(state.valid, state.code, state.temp, state.hum);
+  renderWeather(state.valid, state.code, state.tmin, state.tmax, state.hum);
   paint();
 
   document.getElementById("cap").textContent = state.valid
-    ? NAMES[state.code] + " " + state.temp + "C " + state.hum + "%"
+    ? NAMES[state.code] + " " + state.tmin + "~" + state.tmax + "C " + state.hum + "%"
     : "无天气数据";
 
-  // 与 App 端 sendWeatherFrame() 同一套编码
-  const t = Math.max(0, Math.min(100, state.temp + 40));
+  // 与 App 端 sendWeatherFrame() 同一套编码：AA 55 05 CODE TMIN TMAX HUM XOR
+  const t1 = Math.max(0, Math.min(100, state.tmin + 40));
+  const t2 = Math.max(0, Math.min(100, state.tmax + 40));
   const h = Math.max(0, Math.min(100, state.hum));
   const c = Math.max(0, Math.min(9, state.code));
-  const f = [0xAA, 0x55, 0x03, c, t, h, 0];
-  f[6] = f[2] ^ f[3] ^ f[4] ^ f[5];
+  const f = [0xAA, 0x55, 0x05, c, t1, t2, h, 0];
+  f[7] = f[2] ^ f[3] ^ f[4] ^ f[5] ^ f[6];
   const hex = f.map(function (v) { return (v < 16 ? "0" : "") + v.toString(16).toUpperCase(); }).join(" ");
   document.getElementById("frame").textContent =
     state.valid ? "下发帧： " + hex : "无数据时不发帧（只显示 NO DATA）";
 }
 
 function syncInputs() {
-  document.getElementById("rTemp").value = state.temp;
-  document.getElementById("nTemp").value = state.temp;
+  document.getElementById("rTmin").value = state.tmin;
+  document.getElementById("nTmin").value = state.tmin;
+  document.getElementById("rTmax").value = state.tmax;
+  document.getElementById("nTmax").value = state.tmax;
   document.getElementById("rHum").value = state.hum;
   document.getElementById("nHum").value = state.hum;
   selCode.value = String(state.code);
@@ -343,16 +344,28 @@ document.getElementById("bNoData").onclick = function () {
 };
 selCode.onchange = function () { state.code = parseInt(this.value, 10); update(); };
 
-document.getElementById("rTemp").oninput = function () {
-  state.temp = parseInt(this.value, 10);
-  document.getElementById("nTemp").value = state.temp;
+document.getElementById("rTmin").oninput = function () {
+  state.tmin = parseInt(this.value, 10);
+  document.getElementById("nTmin").value = state.tmin;
   update();
 };
-document.getElementById("nTemp").oninput = function () {
+document.getElementById("nTmin").oninput = function () {
   let v = parseInt(this.value, 10);
   if (isNaN(v)) return;
-  state.temp = Math.max(-40, Math.min(60, v));
-  document.getElementById("rTemp").value = state.temp;
+  state.tmin = Math.max(-40, Math.min(60, v));
+  document.getElementById("rTmin").value = state.tmin;
+  update();
+};
+document.getElementById("rTmax").oninput = function () {
+  state.tmax = parseInt(this.value, 10);
+  document.getElementById("nTmax").value = state.tmax;
+  update();
+};
+document.getElementById("nTmax").oninput = function () {
+  let v = parseInt(this.value, 10);
+  if (isNaN(v)) return;
+  state.tmax = Math.max(-40, Math.min(60, v));
+  document.getElementById("rTmax").value = state.tmax;
   update();
 };
 document.getElementById("rHum").oninput = function () {
@@ -387,7 +400,7 @@ document.querySelectorAll("[data-p]").forEach(function (b) {
   b.onclick = function () {
     const p = this.dataset.p.split(",").map(Number);
     state.valid = true;
-    state.code = p[0]; state.temp = p[1]; state.hum = p[2];
+    state.code = p[0]; state.tmin = p[1]; state.tmax = p[2]; state.hum = p[3];
     document.getElementById("bValid").classList.add("on");
     document.getElementById("bNoData").classList.remove("on");
     syncInputs();
@@ -396,7 +409,7 @@ document.querySelectorAll("[data-p]").forEach(function (b) {
 });
 
 // 支持 URL 参数直接打开某个状态，例如
-//   oled_preview.html?code=9&temp=-21&hum=60
+//   oled_preview.html?code=9&tmin=-5&tmax=3&hum=100
 //   oled_preview.html?valid=0
 (function applyUrlParams() {
   if (!window.URLSearchParams) return;
@@ -410,9 +423,17 @@ document.querySelectorAll("[data-p]").forEach(function (b) {
     const v = parseInt(q.get("code"), 10);
     if (!isNaN(v)) state.code = Math.max(0, Math.min(9, v));
   }
-  if (q.has("temp")) {
+  if (q.has("temp")) {          // 兼容旧参数：单值同时当作最低和最高
     const v = parseInt(q.get("temp"), 10);
-    if (!isNaN(v)) state.temp = Math.max(-40, Math.min(60, v));
+    if (!isNaN(v)) { state.tmin = v; state.tmax = v; }
+  }
+  if (q.has("tmin")) {
+    const v = parseInt(q.get("tmin"), 10);
+    if (!isNaN(v)) state.tmin = Math.max(-40, Math.min(60, v));
+  }
+  if (q.has("tmax")) {
+    const v = parseInt(q.get("tmax"), 10);
+    if (!isNaN(v)) state.tmax = Math.max(-40, Math.min(60, v));
   }
   if (q.has("hum")) {
     const v = parseInt(q.get("hum"), 10);

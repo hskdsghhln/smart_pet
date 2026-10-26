@@ -3,7 +3,7 @@
 
 #define WEATHER_HEAD1       0xAA
 #define WEATHER_HEAD2       0x55
-#define WEATHER_PAYLOAD     3
+#define WEATHER_PAYLOAD     5
 
 /* 解析状态机 */
 #define WX_IDLE             0
@@ -99,11 +99,15 @@ uint8_t Weather_OnByte(uint8_t b)
 			{
 				x ^= Wx_Buf[i];
 			}
-			if((x == b) && (Wx_Len >= WEATHER_PAYLOAD))
+			/* 校验通过且长度正好是 5 才采用。
+			   长度不对的帧（比如旧版只有 TEMP 的 3 字节帧）在上面的状态机里
+			   已经被完整吃掉，不会漏到指令通道去，这里只是不采信而已。 */
+			if((x == b) && (Wx_Len == WEATHER_PAYLOAD))
 			{
 				Weather_Code  = Wx_Buf[0];
-				Weather_Temp  = (int8_t)((int16_t)Wx_Buf[1] - 40);
-				Weather_Hum   = Wx_Buf[2];
+				Weather_Tmin  = (int8_t)((int16_t)Wx_Buf[1] - 40);
+				Weather_Tmax  = (int8_t)((int16_t)Wx_Buf[2] - 40);
+				Weather_Hum   = Wx_Buf[3];
 				Weather_Valid = 1;
 			}
 			Wx_State = WX_IDLE;
