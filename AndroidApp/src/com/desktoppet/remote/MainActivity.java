@@ -21,12 +21,20 @@ import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.graphics.Color;
+import android.graphics.Typeface;
+import android.graphics.drawable.Drawable;
+import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.StateListDrawable;
 import android.location.LocationManager;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.provider.Settings;
+import android.text.SpannableString;
+import android.text.Spanned;
+import android.text.style.RelativeSizeSpan;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.ArrayAdapter;
@@ -112,47 +120,55 @@ public class MainActivity extends Activity {
         }
     }
 
-    private static final String[] GROUP_TITLE = {
-            "姿态", "移动", "特技", "灯光与状态", "调速", "天气"
+    /* ================= 界面配色：一个分类一个颜色 ================= */
+
+    private static final int C_POSE  = 0xFF22C55E;   // 状态（绿）
+    private static final int C_MOVE  = 0xFF3B82F6;   // 移动（蓝）
+    private static final int C_TRICK = 0xFFF59E0B;   // 动作（橙）
+    private static final int C_LIGHT = 0xFFA855F7;   // 灯光（紫）
+    private static final int C_MISC  = 0xFF06B6D4;   // 调速/天气（青）
+
+    /* 状态：发一次就保持住，不涉及连续运动 */
+    private static final Cmd[] POSE_CMDS = {
+            new Cmd("放松趴下", ')'),
+            new Cmd("蹲下", '0'),
+            new Cmd("直立", '1'),
+            new Cmd("趴下", '2'),
     };
 
-    private static final Cmd[][] GROUPS = {
-            {
-                    new Cmd("放松趴下", ')'),
-                    new Cmd("蹲下", '0'),
-                    new Cmd("直立", '1'),
-                    new Cmd("趴下", '2'),
-            },
-            {
-                    new Cmd("前进", '3'),
-                    new Cmd("后退", '4'),
-                    new Cmd("左转", '5'),
-                    new Cmd("右转", '6'),
-                    new Cmd("摇摆", '7'),
-            },
-            {
-                    new Cmd("前跳", 'A'),
-                    new Cmd("后跳", 'B'),
-                    new Cmd("打招呼", 'C'),
-                    new Cmd("伸懒腰", 'H'),
-                    new Cmd("拉伸", 'I'),
-                    new Cmd("摇尾巴", '@'),
-            },
-            {
-                    new Cmd("开灯", 'D'),
-                    new Cmd("关灯", 'E'),
-                    new Cmd("呼吸灯开", 'F'),
-                    new Cmd("呼吸灯关", 'G'),
-                    new Cmd("显示电量", 'P'),
-            },
-            {
-                    new Cmd("走路加速", '8'),
-                    new Cmd("摇摆加速", '9'),
-            },
-            {
-                    new Cmd("同步天气"),
-                    new Cmd("显示天气", 'Q'),
-            }
+    /* 移动：十字盘四向 + 中间站定 */
+    private static final Cmd MOVE_FWD   = new Cmd("前进", '3');
+    private static final Cmd MOVE_BACK  = new Cmd("后退", '4');
+    private static final Cmd MOVE_LEFT  = new Cmd("左转", '5');
+    private static final Cmd MOVE_RIGHT = new Cmd("右转", '6');
+    private static final Cmd MOVE_STOP  = new Cmd("站定", '1');
+
+    /* 动作：做完自己回到待机 */
+    private static final Cmd[] TRICK_CMDS = {
+            new Cmd("摇摆", '7'),
+            new Cmd("摇尾巴", '@'),
+            new Cmd("前跳", 'A'),
+            new Cmd("后跳", 'B'),
+            new Cmd("打招呼", 'C'),
+            new Cmd("伸懒腰", 'H'),
+            new Cmd("拉伸", 'I'),
+    };
+
+    /* 灯光与显示 */
+    private static final Cmd[] LIGHT_CMDS = {
+            new Cmd("开灯", 'D'),
+            new Cmd("关灯", 'E'),
+            new Cmd("呼吸灯开", 'F'),
+            new Cmd("呼吸灯关", 'G'),
+            new Cmd("显示电量", 'P'),
+    };
+
+    /* 调速与天气 */
+    private static final Cmd[] MISC_CMDS = {
+            new Cmd("走路加速", '8'),
+            new Cmd("摇摆加速", '9'),
+            new Cmd("同步天气"),
+            new Cmd("显示天气", 'Q'),
     };
 
     /* ================= 扫描到的设备 ================= */
@@ -216,7 +232,7 @@ public class MainActivity extends Activity {
         BluetoothManager bm = (BluetoothManager) getSystemService(Context.BLUETOOTH_SERVICE);
         adapter = bm == null ? null : bm.getAdapter();
 
-        buildGrid();
+        buildUi();
 
         btnScan.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -252,63 +268,152 @@ public class MainActivity extends Activity {
         return getResources().getColor(id);
     }
 
-    private void buildGrid() {
+    private void buildUi() {
         LinearLayout grid = (LinearLayout) findViewById(R.id.grid);
         grid.removeAllViews();
 
-        final int PER_ROW = 4;
+        /* ---------- 状态：一排分段按钮 ---------- */
+        LinearLayout pose = newSection(grid, "状态", C_POSE, "切一下就保持住");
+        LinearLayout poseRow = newRow(pose, 10f);
+        for (int i = 0; i < POSE_CMDS.length; i++) {
+            poseRow.addView(cmdButton(POSE_CMDS[i], C_POSE, 44f, 12.5f), cell(44f, 3f));
+        }
 
-        for (int g = 0; g < GROUPS.length; g++) {
-            TextView title = new TextView(this);
-            title.setText(GROUP_TITLE[g]);
-            title.setTextColor(col(R.color.muted));
-            title.setTextSize(12f);
-            LinearLayout.LayoutParams tp = new LinearLayout.LayoutParams(
+        /* ---------- 移动：十字盘 ---------- */
+        LinearLayout move = newSection(grid, "移动", C_MOVE, "中间是站定");
+
+        LinearLayout up = newRow(move, 10f);
+        space(up, 58f);
+        up.addView(arrowButton("\u2191", MOVE_FWD), cell(58f, 3f));
+        space(up, 58f);
+
+        LinearLayout mid = newRow(move, 6f);
+        mid.addView(arrowButton("\u2190", MOVE_LEFT), cell(58f, 3f));
+        mid.addView(stopButton(MOVE_STOP), cell(58f, 3f));
+        mid.addView(arrowButton("\u2192", MOVE_RIGHT), cell(58f, 3f));
+
+        LinearLayout down = newRow(move, 6f);
+        space(down, 58f);
+        down.addView(arrowButton("\u2193", MOVE_BACK), cell(58f, 3f));
+        space(down, 58f);
+
+        /* ---------- 动作 ---------- */
+        LinearLayout trick = newSection(grid, "动作", C_TRICK, "做完自动回待机");
+        addRows(trick, TRICK_CMDS, C_TRICK, 4, 52f, 12.5f);
+
+        /* ---------- 灯光与显示 ---------- */
+        LinearLayout light = newSection(grid, "灯光与显示", C_LIGHT, null);
+        addRows(light, LIGHT_CMDS, C_LIGHT, 4, 46f, 12f);
+
+        /* ---------- 调速与天气 ---------- */
+        LinearLayout misc = newSection(grid, "调速与天气", C_MISC, null);
+        LinearLayout miscRow = newRow(misc, 10f);
+        for (int i = 0; i < MISC_CMDS.length; i++) {
+            miscRow.addView(cmdButton(MISC_CMDS[i], C_MISC, 46f, 11.5f), cell(46f, 3f));
+        }
+    }
+
+    /* ---- 一张分区卡片：左边一条竖色条 + 标题 + 提示 ---- */
+    private LinearLayout newSection(LinearLayout parent, String title, int color, String hint) {
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setBackground(cardBg());
+        card.setPadding(dp(10f), dp(10f), dp(10f), dp(12f));
+
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT);
+        lp.topMargin = dp(10f);
+        card.setLayoutParams(lp);
+
+        LinearLayout head = new LinearLayout(this);
+        head.setOrientation(LinearLayout.HORIZONTAL);
+        head.setGravity(Gravity.CENTER_VERTICAL);
+
+        View bar = new View(this);
+        LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(dp(3f), dp(13f));
+        bp.rightMargin = dp(7f);
+        bar.setLayoutParams(bp);
+        bar.setBackground(solid(color, 2f));
+        head.addView(bar);
+
+        TextView tv = new TextView(this);
+        tv.setText(title);
+        tv.setTextColor(col(R.color.text));
+        tv.setTextSize(13f);
+        tv.setTypeface(Typeface.DEFAULT_BOLD);
+        head.addView(tv);
+
+        if (hint != null) {
+            TextView h = new TextView(this);
+            LinearLayout.LayoutParams hp = new LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.WRAP_CONTENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT);
-            tp.topMargin = dp(16f);
-            tp.bottomMargin = dp(2f);
-            title.setLayoutParams(tp);
-            grid.addView(title);
+            hp.leftMargin = dp(8f);
+            h.setLayoutParams(hp);
+            h.setText(hint);
+            h.setTextColor(col(R.color.muted));
+            h.setTextSize(10.5f);
+            head.addView(h);
+        }
 
-            Cmd[] cmds = GROUPS[g];
-            int rows = (cmds.length + PER_ROW - 1) / PER_ROW;
+        card.addView(head);
+        parent.addView(card);
+        return card;
+    }
 
-            for (int r = 0; r < rows; r++) {
-                LinearLayout row = new LinearLayout(this);
-                row.setOrientation(LinearLayout.HORIZONTAL);
-                LinearLayout.LayoutParams rp = new LinearLayout.LayoutParams(
-                        LinearLayout.LayoutParams.MATCH_PARENT,
-                        LinearLayout.LayoutParams.WRAP_CONTENT);
-                rp.topMargin = dp(8f);
-                row.setLayoutParams(rp);
+    private LinearLayout newRow(LinearLayout card, float topDp) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        LinearLayout.LayoutParams rp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT);
+        rp.topMargin = dp(topDp);
+        card.addView(row, rp);
+        return row;
+    }
 
-                for (int c = 0; c < PER_ROW; c++) {
-                    int idx = r * PER_ROW + c;
-                    LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                            0, dp(58f), 1f);
-                    lp.setMargins(dp(4f), 0, dp(4f), 0);
+    private LinearLayout.LayoutParams cell(float heightDp, float sideDp) {
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, dp(heightDp), 1f);
+        lp.setMargins(dp(sideDp), 0, dp(sideDp), 0);
+        return lp;
+    }
 
-                    if (idx < cmds.length) {
-                        row.addView(makeCmdButton(cmds[idx]), lp);
-                    } else {
-                        row.addView(new View(this), lp);
-                    }
+    private void space(LinearLayout row, float heightDp) {
+        row.addView(new View(this), cell(heightDp, 3f));
+    }
+
+    private void addRows(LinearLayout card, Cmd[] cmds, int color,
+                         int perRow, float h, float textSize) {
+        int i = 0;
+        boolean first = true;
+        while (i < cmds.length) {
+            LinearLayout row = newRow(card, first ? 10f : 6f);
+            first = false;
+            for (int c = 0; c < perRow; c++) {
+                if (i < cmds.length) {
+                    row.addView(cmdButton(cmds[i], color, h, textSize), cell(h, 3f));
+                    i++;
+                } else {
+                    space(row, h);
                 }
-                grid.addView(row);
             }
         }
     }
 
-    private Button makeCmdButton(final Cmd cmd) {
+    private Button cmdButton(final Cmd cmd, int color, float heightDp, float textSize) {
         Button btn = new Button(this);
         btn.setText(cmd.label);
-        btn.setTextSize(13f);
+        btn.setTextSize(textSize);
         btn.setTextColor(col(R.color.text));
         btn.setAllCaps(false);
         btn.setGravity(Gravity.CENTER);
-        btn.setBackgroundResource(R.drawable.sel_btn);
-        btn.setPadding(dp(2f), dp(2f), dp(2f), dp(2f));
+        btn.setTag(Integer.valueOf(color));
+        btn.setMinimumWidth(0);
+        btn.setMinimumHeight(0);
+        btn.setStateListAnimator(null);
+        btn.setPadding(dp(2f), 0, dp(2f), 0);
+        btn.setBackground(buttonBg(color, false));
         btn.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -321,6 +426,87 @@ public class MainActivity extends Activity {
             }
         });
         return btn;
+    }
+
+    /* 十字盘的方向键：上面一个箭头，下面一行文字 */
+    private Button arrowButton(String glyph, Cmd cmd) {
+        Button b = cmdButton(cmd, C_MOVE, 58f, 12f);
+        SpannableString ss = new SpannableString(glyph + "\n" + cmd.label);
+        ss.setSpan(new RelativeSizeSpan(1.55f), 0, glyph.length(),
+                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        ss.setSpan(new RelativeSizeSpan(0.78f), glyph.length() + 1, ss.length(),
+                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        b.setText(ss);
+        b.setLineSpacing(0f, 0.92f);
+        return b;
+    }
+
+    /* 十字盘中间：站定，用实心主色区分开 */
+    private Button stopButton(Cmd cmd) {
+        Button b = cmdButton(cmd, C_MOVE, 58f, 12.5f);
+        b.setBackground(accentBg());
+        b.setTextColor(Color.WHITE);
+        return b;
+    }
+
+    /* ---------------- 背景绘制 ---------------- */
+
+    private static int withAlpha(int color, int alpha) {
+        return Color.argb(alpha, Color.red(color), Color.green(color), Color.blue(color));
+    }
+
+    private Drawable cardBg() {
+        GradientDrawable g = new GradientDrawable();
+        g.setShape(GradientDrawable.RECTANGLE);
+        g.setColor(col(R.color.card));
+        g.setCornerRadius(dp(16f));
+        g.setStroke(dp(1f), 0xFF242E3B);
+        return g;
+    }
+
+    private Drawable solid(int color, float radiusDp) {
+        GradientDrawable g = new GradientDrawable();
+        g.setShape(GradientDrawable.RECTANGLE);
+        g.setColor(color);
+        g.setCornerRadius(dp(radiusDp));
+        return g;
+    }
+
+    /* 分类色按钮：底色淡、描边亮；active 时更亮，用来标出最后按下的那一颗 */
+    private Drawable buttonBg(int color, boolean active) {
+        GradientDrawable normal = new GradientDrawable();
+        normal.setShape(GradientDrawable.RECTANGLE);
+        normal.setCornerRadius(dp(12f));
+        normal.setColor(withAlpha(color, active ? 0x55 : 0x1E));
+        normal.setStroke(dp(1f), withAlpha(color, active ? 0xC8 : 0x4D));
+
+        GradientDrawable pressed = new GradientDrawable();
+        pressed.setShape(GradientDrawable.RECTANGLE);
+        pressed.setCornerRadius(dp(12f));
+        pressed.setColor(withAlpha(color, 0x44));
+        pressed.setStroke(dp(1f), withAlpha(color, 0x99));
+
+        StateListDrawable s = new StateListDrawable();
+        s.addState(new int[]{android.R.attr.state_pressed}, pressed);
+        s.addState(new int[]{}, normal);
+        return s;
+    }
+
+    private Drawable accentBg() {
+        GradientDrawable normal = new GradientDrawable();
+        normal.setShape(GradientDrawable.RECTANGLE);
+        normal.setCornerRadius(dp(29f));
+        normal.setColor(col(R.color.accent));
+
+        GradientDrawable pressed = new GradientDrawable();
+        pressed.setShape(GradientDrawable.RECTANGLE);
+        pressed.setCornerRadius(dp(29f));
+        pressed.setColor(col(R.color.accent_pressed));
+
+        StateListDrawable s = new StateListDrawable();
+        s.addState(new int[]{android.R.attr.state_pressed}, pressed);
+        s.addState(new int[]{}, normal);
+        return s;
     }
 
     /* ================= 权限 ================= */
@@ -774,11 +960,7 @@ public class MainActivity extends Activity {
             return;
         }
 
-        if (lastBtn != null && lastBtn != btn) {
-            lastBtn.setBackgroundResource(R.drawable.sel_btn);
-        }
-        btn.setBackgroundResource(R.drawable.sel_btn_primary);
-        lastBtn = btn;
+        markButton(btn);
 
         final byte[] data = new byte[]{(byte) cmd.code};
         boolean ok;
@@ -832,10 +1014,23 @@ public class MainActivity extends Activity {
 
     private void markButton(Button btn) {
         if (lastBtn != null && lastBtn != btn) {
-            lastBtn.setBackgroundResource(R.drawable.sel_btn);
+            resetButton(lastBtn);
         }
-        btn.setBackgroundResource(R.drawable.sel_btn_primary);
+        Object tag = btn.getTag();
+        if (tag instanceof Integer) {
+            btn.setBackground(buttonBg(((Integer) tag).intValue(), true));
+        }
         lastBtn = btn;
+    }
+
+    /** 把按钮恢复成"没按下过"的样子（分类色在 tag 里，重建即可） */
+    private void resetButton(Button btn) {
+        Object tag = btn.getTag();
+        if (tag instanceof Integer) {
+            btn.setBackground(buttonBg(((Integer) tag).intValue(), false));
+        } else {
+            btn.setBackgroundResource(R.drawable.sel_btn);
+        }
     }
 
     private void syncWeather() {
@@ -1123,7 +1318,7 @@ public class MainActivity extends Activity {
         closeGatt();
         setState(STATE_IDLE, reason);
         if (lastBtn != null) {
-            lastBtn.setBackgroundResource(R.drawable.sel_btn);
+            resetButton(lastBtn);
             lastBtn = null;
         }
     }
