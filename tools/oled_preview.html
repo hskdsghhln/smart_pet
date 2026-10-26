@@ -257,24 +257,19 @@ function renderWeather(valid, code, temp, hum) {
 
   showChinese(8, 24, "温度");
   if (temp < 0) {
-    showChar(48, 24, "-", 8);
-    showNum(56, 24, -temp, 2, 8);
-  } else if (temp >= 10) {
-    showNum(48, 24, temp, 2, 8);
+    const len = temp <= -10 ? 2 : 1;
+    showChar(72 - 8 - len * 8, 24, "-", 8);
+    showNum(72 - len * 8, 24, -temp, len, 8);
   } else {
-    showNum(56, 24, temp, 1, 8);
+    const len = temp >= 10 ? 2 : 1;
+    showNum(72 - len * 8, 24, temp, len, 8);
   }
-  showString(64, 24, "C", 8);
+  showString(72, 24, "C", 8);
 
   showChinese(8, 46, "湿度");
-  if (hum >= 100) {
-    showNum(40, 46, hum, 3, 8);
-  } else if (hum >= 10) {
-    showNum(48, 46, hum, 2, 8);
-  } else {
-    showNum(56, 46, hum, 1, 8);
-  }
-  showString(64, 46, "%", 8);
+  const hl = hum >= 100 ? 3 : (hum >= 10 ? 2 : 1);
+  showNum(72 - hl * 8, 46, hum, hl, 8);
+  showString(72, 46, "%", 8);
 }
 
 /* ---------- 画到 canvas ---------- */
@@ -399,6 +394,31 @@ document.querySelectorAll("[data-p]").forEach(function (b) {
     update();
   };
 });
+
+// 支持 URL 参数直接打开某个状态，例如
+//   oled_preview.html?code=9&temp=-21&hum=60
+//   oled_preview.html?valid=0
+(function applyUrlParams() {
+  if (!window.URLSearchParams) return;
+  const q = new URLSearchParams(location.search);
+  if (q.has("valid") && q.get("valid") === "0") {
+    state.valid = false;
+    document.getElementById("bNoData").classList.add("on");
+    document.getElementById("bValid").classList.remove("on");
+  }
+  if (q.has("code")) {
+    const v = parseInt(q.get("code"), 10);
+    if (!isNaN(v)) state.code = Math.max(0, Math.min(9, v));
+  }
+  if (q.has("temp")) {
+    const v = parseInt(q.get("temp"), 10);
+    if (!isNaN(v)) state.temp = Math.max(-40, Math.min(60, v));
+  }
+  if (q.has("hum")) {
+    const v = parseInt(q.get("hum"), 10);
+    if (!isNaN(v)) state.hum = Math.max(0, Math.min(100, v));
+  }
+})();
 
 syncInputs();
 update();
