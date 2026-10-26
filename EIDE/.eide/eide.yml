@@ -103,6 +103,8 @@ virtualFolder:
         - path: ../HardWare/OLED_Data.h
         - path: ../HardWare/Face_Config.c
         - path: ../HardWare/Face_Config.h
+        - path: ../HardWare/Weather.c
+        - path: ../HardWare/Weather.h
         - path: ../HardWare/AD.c
         - path: ../HardWare/AD.h
         - path: ../HardWare/PowerDetection.c
