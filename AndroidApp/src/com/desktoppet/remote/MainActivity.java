@@ -129,6 +129,10 @@ public class MainActivity extends Activity {
                     new Cmd("左转", '5'),
                     new Cmd("右转", '6'),
                     new Cmd("摇摆", '7'),
+                    new Cmd("摇摆26s", 'R'),
+                    new Cmd("摇摆27s", 'S'),
+                    new Cmd("摇摆16s", 'T'),
+                    new Cmd("摇摆15s", 'U'),
             },
             {
                     new Cmd("前跳", 'A'),

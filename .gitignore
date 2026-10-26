@@ -32,6 +32,8 @@ _*.png
 _*.jpg
 _*.ps1
 _*.txt
+_*.html
+_backup_*/
 
 # ---------- Android 上位机 ----------
 AndroidApp/build/

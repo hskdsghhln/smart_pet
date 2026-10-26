@@ -6,12 +6,19 @@
 #define Chongfunumber 2          //动作重复次数、前进后退左转右转
 #define SwingRepeatnumber 3      //摇摆重复次数
 #define HelloRepeatnumber 4      //打招呼重复次数
+/*一串动作做完后再等这么久（ms）。实测有些动作比语音短，动作一结束就干下一件事
+  会把语音打断，声音缺一截，所以留出 2 秒给它放完。*/
+#define ACTION_TAIL_DELAY_MS 2000
 extern uint16_t PAnumbers;       //动作重复次数
 extern uint16_t TiaoTurn;        //向前跳
 extern uint16_t TiaoTurn2;       //向后跳
 extern uint16_t Action_Mode;     //动作模式
 extern uint16_t SpeedDelay;      //运动速度
 extern uint16_t SwingDelay;      //摇摆速度
+/*摇摆时长（秒）。0 = 按 SwingRepeatnumber 的固定次数（0x37 的默认行为）；
+  >0 = 按时间摇摆，由 0x52~0x55 设定（26/27/16/15 秒）。
+  摇摆结束时自动清回 0，避免影响下一次普通摇摆。*/
+extern uint16_t SwingSeconds;
 extern uint16_t Face_Mode;       //表情切换
 extern uint8_t WeiBa_Bit;            //摇尾巴判断
 extern uint8_t WeiBa_Value;   //摇尾巴的compare值

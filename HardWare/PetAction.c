@@ -290,29 +290,50 @@ void Action_Rrotation(void)//向右旋转
  * 摇摆 / 摇尾巴
  *============================================================================*/
 
+/* 摇摆
+   SwingSeconds==0：按 SwingRepeatnumber 摇固定次数（0x37 的老行为）
+   SwingSeconds>0 ：按时间摇，用 0x52~0x55 指定的秒数
+
+   时间是自己累加出来的，不依赖任何定时器计数：每 Delay_ms(SwingDelay)
+   就给 ElapsedMs 加一次，所以 0x39 改了摇摆速度之后，秒数依然准。
+   一个来回 = (150-30+1)*2 = 242 步，默认 6ms/步 => 约 1.45 秒。 */
 void Action_Swing(void)//摇摆
 {
 	uint16_t SwingNumber=SwingRepeatnumber;
+	uint32_t ElapsedMs=0;                            /*已经摇过的毫秒数*/
+	uint32_t TargetMs=(uint32_t)SwingSeconds*1000UL; /*0 = 不限时，按次数收尾*/
 	uint16_t i;
 
-	while(SwingNumber && (Action_Mode==8))
+	while(Action_Mode==8)
 	{
 		for(i=30;i<=150;i++)
 		{
 			if(Action_Mode!=8)break;
 			Legs_All((float)i);
 			Delay_ms(SwingDelay);
+			ElapsedMs+=SwingDelay;
+			if(TargetMs && (ElapsedMs>=TargetMs))break;
 		}
+		if(Action_Mode!=8)break;
+		if(TargetMs && (ElapsedMs>=TargetMs))break;
+
 		for(i=150;i>=30;i--)
 		{
 			if(Action_Mode!=8)break;
 			Legs_All((float)i);
 			Delay_ms(SwingDelay);
+			ElapsedMs+=SwingDelay;
+			if(TargetMs && (ElapsedMs>=TargetMs))break;
 		}
-
 		if(Action_Mode!=8)break;
+		if(TargetMs && (ElapsedMs>=TargetMs))break;
 
-		if(SwingNumber) { SwingNumber--; }
+		/*限时模式不看次数，摇够时间就结束；否则按 SwingRepeatnumber 收尾*/
+		if(TargetMs==0)
+		{
+			if(SwingNumber) { SwingNumber--; }
+			if(SwingNumber==0) break;
+		}
 	}
 
 	Legs_All(90);
@@ -321,6 +342,8 @@ void Action_Swing(void)//摇摆
 	{
 		Action_Mode=2;
 	}
+
+	SwingSeconds=0;/*时长用完就清掉，下次 0x37 恢复固定次数行为*/
 }
 
 void Action_SwingTail(void)//摇尾巴
@@ -597,6 +620,7 @@ static uint8_t Command_IsValid(uint16_t cmd)
 		case 0x39: case 0x40: case 0x41: case 0x42: case 0x43:
 		case 0x44: case 0x45: case 0x46: case 0x47: case 0x48:
 		case 0x49: case 0x50: case 0x51:
+		case 0x52: case 0x53: case 0x54: case 0x55:
 			return 1;
 		default:
 			return 0;
@@ -649,6 +673,7 @@ void PetAction_Judgmengt(uint8_t Serial_type)
 				break;
 			case 0x37://摇摆
 				Face_Mode=4;
+				SwingSeconds=0;   /*清掉 0x52~0x55 残留的时长，恢复固定次数*/
 				Action_Mode=8;
 				break;
 			case 0x38://减少移动延迟，增加移动速度（300~550ms 循环，步进 50ms）
@@ -713,6 +738,26 @@ void PetAction_Judgmengt(uint8_t Serial_type)
 				Face_Mode=7;
 				Action_Mode=2;   /*站起来，否则动作阻塞时天气刷不出来*/
 				break;
+			case 0x52://摇摆 26 秒
+				Face_Mode=4;
+				SwingSeconds=26;
+				Action_Mode=8;
+				break;
+			case 0x53://摇摆 27 秒
+				Face_Mode=4;
+				SwingSeconds=27;
+				Action_Mode=8;
+				break;
+			case 0x54://摇摆 16 秒
+				Face_Mode=4;
+				SwingSeconds=16;
+				Action_Mode=8;
+				break;
+			case 0x55://摇摆 15 秒
+				Face_Mode=4;
+				SwingSeconds=15;
+				Action_Mode=8;
+				break;
 			default:
 				break;
 		}
@@ -759,6 +804,7 @@ void PetAction_Judgmengt(uint8_t Serial_type)
 				break;
 			case 0x37://摇摆
 				Face_Mode=4;
+				SwingSeconds=0;   /*清掉 0x52~0x55 残留的时长，恢复固定次数*/
 				Action_Mode=8;
 				break;
 			case 0x38://减少移动延迟，增加移动速度（300~550ms 循环，步进 50ms）
@@ -817,6 +863,26 @@ void PetAction_Judgmengt(uint8_t Serial_type)
 				Face_Mode=7;
 				Action_Mode=2;
 				break;
+			case 0x52://摇摆 26 秒
+				Face_Mode=4;
+				SwingSeconds=26;
+				Action_Mode=8;
+				break;
+			case 0x53://摇摆 27 秒
+				Face_Mode=4;
+				SwingSeconds=27;
+				Action_Mode=8;
+				break;
+			case 0x54://摇摆 16 秒
+				Face_Mode=4;
+				SwingSeconds=16;
+				Action_Mode=8;
+				break;
+			case 0x55://摇摆 15 秒
+				Face_Mode=4;
+				SwingSeconds=15;
+				Action_Mode=8;
+				break;
 			default:
 				break;
 		}
@@ -826,6 +892,7 @@ void PetAction_Judgmengt(uint8_t Serial_type)
 /*执行动作*/
 void PetAction_Perform(void)
 {
+		uint16_t ModeBefore=Action_Mode;   /*这次进来时是什么动作*/
 		if(Action_Mode==0){Action_relaxed_getdowm();}//放松趴下
 		else if(Action_Mode==1){Action_sit();}//坐下
 		else if(Action_Mode==2){Action_upright();}//站立
@@ -842,4 +909,16 @@ void PetAction_Perform(void)
 		else if(Action_Mode==13){Action_Hello();}//打招呼
 		else if(Action_Mode==14){Action_stretch();}//伸懒腰
 		else if(Action_Mode==15){Action_Lstretch();}//后腿拉伸
+
+		/*【动作结束后给语音留时间】
+		  各动作函数收尾时都会把 Action_Mode 改成 9（待机摇尾巴），
+		  所以"进来时不是 9、出去时变成 9"就代表这一串动作做完了。
+		  这时停 2 秒再让调度继续，否则动作一结束马上干下一件事，
+		  语音还没说完就被打断。
+		  只在语音通道生效（Sustainedmove==0）：蓝牙是连续动作，
+		  中间插 2 秒会一顿一顿的。*/
+		if((ModeBefore!=9U) && (Action_Mode==9U) && (Sustainedmove==0U))
+		{
+			Delay_ms(ACTION_TAIL_DELAY_MS);
+		}
 }

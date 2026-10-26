@@ -13,6 +13,7 @@ uint16_t Action_Mode=2;   //动作模式,上电后是站立状态
    命令就来了，步态会退化成小幅抖动。可通过命令 0x38 在 300~550ms 之间循环调节。 */
 uint16_t SpeedDelay=500;  //运动速度（每个摆腿动作的时长，ms）
 uint16_t SwingDelay=6;    //摇摆速度（每 1 度的时间，ms；6ms/度≈标称速度）
+uint16_t SwingSeconds=0;  //摇摆时长（秒），0=按 SwingRepeatnumber 固定次数
 uint16_t Face_Mode=5;     //表情切换，上电是两个眼睛表情
 uint8_t WeiBa_Bit=0;      //摇尾巴判断
 uint8_t WeiBa_Value=90;   //摇尾巴的compare值
