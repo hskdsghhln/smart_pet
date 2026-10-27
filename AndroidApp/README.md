@@ -32,6 +32,8 @@
 
 ## 二、安装
 
+当前版本：**1.1**（versionCode 11），更新日志见 [CHANGELOG.md](CHANGELOG.md)。
+
 把 `DeskPetRemote.apk` 传到手机，点击安装。首次需要在系统里允许"安装未知来源应用"。
 
 ## 三、使用步骤
