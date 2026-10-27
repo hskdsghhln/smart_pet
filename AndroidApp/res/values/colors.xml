@@ -1,14 +1,35 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="bg">#0F141B</color>
-    <color name="card">#1A2029</color>
-    <color name="btn">#232B36</color>
-    <color name="btn_pressed">#38455A</color>
-    <color name="accent">#3B82F6</color>
-    <color name="accent_pressed">#1D4ED8</color>
-    <color name="text">#E6EDF5</color>
-    <color name="muted">#8B9AAC</color>
-    <color name="log_text">#9FB3C8</color>
-    <color name="green">#22C55E</color>
-    <color name="amber">#F59E0B</color>
+    <!--
+      配色：奶白 + 薄荷 + 樱花粉 + 摩卡棕（薄荷曼波）
+        奶白   #F9F4EA  背景
+        薄荷   #CFE4DD  状态区
+        樱花粉 #FCD3D5  动作区
+        摩卡棕 #8D6C63  主色 / 文字
+      灯光区和调速区在原四色里插不进去，用同族调和色（棕+奶白、薄荷+奶白），
+      保证整块界面只有一套色系。
+    -->
+    <color name="bg">#F9F4EA</color>
+    <color name="card">#FFFCF7</color>
+    <color name="line">#EDE3D6</color>
+    <color name="btn">#FFFFFF</color>
+    <color name="btn_pressed">#F4ECE1</color>
+
+    <color name="accent">#8D6C63</color>
+    <color name="accent_pressed">#6F534B</color>
+
+    <color name="text">#6B4F47</color>
+    <color name="text_strong">#8D6C63</color>
+    <color name="muted">#B29A90</color>
+    <color name="log_text">#8D6C63</color>
+
+    <!-- 分类色 -->
+    <color name="mint">#CFE4DD</color>
+    <color name="pink">#FCD3D5</color>
+    <color name="sand">#EFDFCF</color>
+    <color name="sage">#DCE7E0</color>
+
+    <!-- 状态指示灯 / 强调 -->
+    <color name="green">#5E9E8A</color>
+    <color name="amber">#C08A4E</color>
 </resources>

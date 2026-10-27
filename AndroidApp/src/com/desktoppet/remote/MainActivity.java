@@ -122,11 +122,16 @@ public class MainActivity extends Activity {
 
     /* ================= 界面配色：一个分类一个颜色 ================= */
 
-    private static final int C_POSE  = 0xFF22C55E;   // 状态（绿）
-    private static final int C_MOVE  = 0xFF3B82F6;   // 移动（蓝）
-    private static final int C_TRICK = 0xFFF59E0B;   // 动作（橙）
-    private static final int C_LIGHT = 0xFFA855F7;   // 灯光（紫）
-    private static final int C_MISC  = 0xFF06B6D4;   // 调速/天气（青）
+    private static final int C_POSE  = 0xFFCFE4DD;   // 状态（薄荷）
+    private static final int C_MOVE  = 0xFF8D6C63;   // 移动（摩卡棕）
+    private static final int C_TRICK = 0xFFFCD3D5;   // 动作（樱花粉）
+    private static final int C_LIGHT = 0xFFEFDFCF;   // 灯光（奶油沙）
+    private static final int C_MISC  = 0xFFDCE7E0;   // 调速/天气（鼠尾草）
+
+    /* 按钮三种样式 */
+    private static final int STYLE_PASTEL = 0;   // 分类色填充 + 棕字
+    private static final int STYLE_LIGHT  = 1;   // 奶白填充 + 棕描边 + 棕字
+    private static final int STYLE_SOLID  = 2;   // 实心摩卡棕 + 白字
 
     /* 状态：发一次就保持住，不涉及连续运动 */
     private static final Cmd[] POSE_CMDS = {
@@ -334,7 +339,7 @@ public class MainActivity extends Activity {
         LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(dp(3f), dp(13f));
         bp.rightMargin = dp(7f);
         bar.setLayoutParams(bp);
-        bar.setBackground(solid(color, 2f));
+        bar.setBackground(solid(shade(color, 0.82f), 2f));
         head.addView(bar);
 
         TextView tv = new TextView(this);
@@ -401,19 +406,35 @@ public class MainActivity extends Activity {
         }
     }
 
-    private Button cmdButton(final Cmd cmd, int color, float heightDp, float textSize) {
-        Button btn = new Button(this);
+    /* 带样式的按钮：记住自己的分类色和样式，恢复高亮时按这些重建背景 */
+    private static class PetButton extends Button {
+        final int tint;
+        final int style;
+
+        PetButton(Context c, int tint, int style) {
+            super(c);
+            this.tint = tint;
+            this.style = style;
+        }
+    }
+
+    private PetButton cmdButton(final Cmd cmd, int tint, float heightDp, float textSize) {
+        return cmdButton(cmd, tint, STYLE_PASTEL, heightDp, textSize);
+    }
+
+    private PetButton cmdButton(final Cmd cmd, final int tint, int style,
+                                float heightDp, float textSize) {
+        PetButton btn = new PetButton(this, tint, style);
         btn.setText(cmd.label);
         btn.setTextSize(textSize);
-        btn.setTextColor(col(R.color.text));
+        btn.setTextColor(style == STYLE_SOLID ? Color.WHITE : col(R.color.text));
         btn.setAllCaps(false);
         btn.setGravity(Gravity.CENTER);
-        btn.setTag(Integer.valueOf(color));
         btn.setMinimumWidth(0);
         btn.setMinimumHeight(0);
         btn.setStateListAnimator(null);
         btn.setPadding(dp(2f), 0, dp(2f), 0);
-        btn.setBackground(buttonBg(color, false));
+        btn.setBackground(styleBg(tint, style, false));
         btn.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -429,8 +450,8 @@ public class MainActivity extends Activity {
     }
 
     /* 十字盘的方向键：上面一个箭头，下面一行文字 */
-    private Button arrowButton(String glyph, Cmd cmd) {
-        Button b = cmdButton(cmd, C_MOVE, 58f, 12f);
+    private PetButton arrowButton(String glyph, Cmd cmd) {
+        PetButton b = cmdButton(cmd, C_MOVE, STYLE_LIGHT, 58f, 12f);
         SpannableString ss = new SpannableString(glyph + "\n" + cmd.label);
         ss.setSpan(new RelativeSizeSpan(1.55f), 0, glyph.length(),
                 Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
@@ -441,26 +462,37 @@ public class MainActivity extends Activity {
         return b;
     }
 
-    /* 十字盘中间：站定，用实心主色区分开 */
-    private Button stopButton(Cmd cmd) {
-        Button b = cmdButton(cmd, C_MOVE, 58f, 12.5f);
-        b.setBackground(accentBg());
-        b.setTextColor(Color.WHITE);
-        return b;
+    /* 十字盘中间：站定，实心摩卡棕，跟四个方向键区分开 */
+    private PetButton stopButton(Cmd cmd) {
+        return cmdButton(cmd, C_MOVE, STYLE_SOLID, 58f, 12.5f);
     }
 
     /* ---------------- 背景绘制 ---------------- */
 
-    private static int withAlpha(int color, int alpha) {
-        return Color.argb(alpha, Color.red(color), Color.green(color), Color.blue(color));
+    /** 按比例压深，用来做同色描边 / 按下态 */
+    private static int shade(int color, float f) {
+        return Color.rgb(
+                Math.min(255, Math.round(Color.red(color) * f)),
+                Math.min(255, Math.round(Color.green(color) * f)),
+                Math.min(255, Math.round(Color.blue(color) * f)));
+    }
+
+    private Drawable styleBg(int tint, int style, boolean active) {
+        if (style == STYLE_SOLID) {
+            return accentBg();
+        }
+        if (style == STYLE_LIGHT) {
+            return lightBg(active);
+        }
+        return pastelBg(tint, active);
     }
 
     private Drawable cardBg() {
         GradientDrawable g = new GradientDrawable();
         g.setShape(GradientDrawable.RECTANGLE);
         g.setColor(col(R.color.card));
-        g.setCornerRadius(dp(16f));
-        g.setStroke(dp(1f), 0xFF242E3B);
+        g.setCornerRadius(dp(18f));
+        g.setStroke(dp(1f), col(R.color.line));
         return g;
     }
 
@@ -472,19 +504,20 @@ public class MainActivity extends Activity {
         return g;
     }
 
-    /* 分类色按钮：底色淡、描边亮；active 时更亮，用来标出最后按下的那一颗 */
-    private Drawable buttonBg(int color, boolean active) {
+    /** 粉彩按钮：分类色填充，描边同色压深；active 时描边换成摩卡棕 */
+    private Drawable pastelBg(int tint, boolean active) {
         GradientDrawable normal = new GradientDrawable();
         normal.setShape(GradientDrawable.RECTANGLE);
         normal.setCornerRadius(dp(12f));
-        normal.setColor(withAlpha(color, active ? 0x55 : 0x1E));
-        normal.setStroke(dp(1f), withAlpha(color, active ? 0xC8 : 0x4D));
+        normal.setColor(tint);
+        normal.setStroke(dp(active ? 2f : 1f),
+                active ? col(R.color.accent) : shade(tint, 0.88f));
 
         GradientDrawable pressed = new GradientDrawable();
         pressed.setShape(GradientDrawable.RECTANGLE);
         pressed.setCornerRadius(dp(12f));
-        pressed.setColor(withAlpha(color, 0x44));
-        pressed.setStroke(dp(1f), withAlpha(color, 0x99));
+        pressed.setColor(shade(tint, 0.94f));
+        pressed.setStroke(dp(1f), shade(tint, 0.78f));
 
         StateListDrawable s = new StateListDrawable();
         s.addState(new int[]{android.R.attr.state_pressed}, pressed);
@@ -492,6 +525,28 @@ public class MainActivity extends Activity {
         return s;
     }
 
+    /** 奶白按钮（十字盘方向键）：奶白底 + 浅棕描边，按下时泛起薄荷色 */
+    private Drawable lightBg(boolean active) {
+        GradientDrawable normal = new GradientDrawable();
+        normal.setShape(GradientDrawable.RECTANGLE);
+        normal.setCornerRadius(dp(12f));
+        normal.setColor(col(R.color.card));
+        normal.setStroke(dp(active ? 2f : 1f),
+                active ? col(R.color.accent) : 0xFFD9C7BD);
+
+        GradientDrawable pressed = new GradientDrawable();
+        pressed.setShape(GradientDrawable.RECTANGLE);
+        pressed.setCornerRadius(dp(12f));
+        pressed.setColor(col(R.color.mint));
+        pressed.setStroke(dp(1f), col(R.color.accent));
+
+        StateListDrawable s = new StateListDrawable();
+        s.addState(new int[]{android.R.attr.state_pressed}, pressed);
+        s.addState(new int[]{}, normal);
+        return s;
+    }
+
+    /** 实心摩卡棕（站定 / 主操作） */
     private Drawable accentBg() {
         GradientDrawable normal = new GradientDrawable();
         normal.setShape(GradientDrawable.RECTANGLE);
@@ -1013,21 +1068,22 @@ public class MainActivity extends Activity {
     }
 
     private void markButton(Button btn) {
+        if (!(btn instanceof PetButton)) {
+            return;
+        }
         if (lastBtn != null && lastBtn != btn) {
             resetButton(lastBtn);
         }
-        Object tag = btn.getTag();
-        if (tag instanceof Integer) {
-            btn.setBackground(buttonBg(((Integer) tag).intValue(), true));
-        }
+        PetButton pb = (PetButton) btn;
+        pb.setBackground(styleBg(pb.tint, pb.style, true));
         lastBtn = btn;
     }
 
-    /** 把按钮恢复成"没按下过"的样子（分类色在 tag 里，重建即可） */
+    /** 把按钮恢复成没按过的样子（分类色和样式都存在 PetButton 里） */
     private void resetButton(Button btn) {
-        Object tag = btn.getTag();
-        if (tag instanceof Integer) {
-            btn.setBackground(buttonBg(((Integer) tag).intValue(), false));
+        if (btn instanceof PetButton) {
+            PetButton pb = (PetButton) btn;
+            pb.setBackground(styleBg(pb.tint, pb.style, false));
         } else {
             btn.setBackgroundResource(R.drawable.sel_btn);
         }
