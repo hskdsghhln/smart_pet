@@ -5,6 +5,7 @@
 #include "Variable.h"
 #include "Timer.h"
 #include "Weather.h"
+#include "Face_Config.h"
 
 /*==============================================================================
  * 本文件按「180° 位置舵机（SG90）」重写
@@ -147,6 +148,7 @@ void Action_advance(void)//前进
 
 	while((Action_Mode==4) && (Sustainedmove || PAnumbers))
 	{
+		Face_Service();/*动作是阻塞的，每拍给表情一次刷新机会*/
 		Legs_Pair2(45);
 		Delay_ms(SpeedDelay);
 
@@ -189,6 +191,7 @@ void Action_back(void)//后退
 
 	while((Action_Mode==5) && (Sustainedmove || PAnumbers))
 	{
+		Face_Service();/*动作是阻塞的，每拍给表情一次刷新机会*/
 		Legs_Pair2(135);
 		Delay_ms(SpeedDelay);
 
@@ -230,6 +233,7 @@ void Action_Lrotation(void)//向左旋转
 
 	while((Action_Mode==6) && (Sustainedmove || PAnumbers))
 	{
+		Face_Service();/*动作是阻塞的，每拍给表情一次刷新机会*/
 		Servo_Angle2(45);
 		Servo_Angle3(135);
 		Delay_ms(SpeedDelay);
@@ -261,6 +265,7 @@ void Action_Rrotation(void)//向右旋转
 
 	while((Action_Mode==7) && (Sustainedmove || PAnumbers))
 	{
+		Face_Service();/*动作是阻塞的，每拍给表情一次刷新机会*/
 		Servo_Angle1(45);
 		Servo_Angle4(135);
 		Delay_ms(SpeedDelay);
@@ -311,6 +316,7 @@ void Action_Swing(void)//摇摆
 			if(Action_Mode!=8)break;
 			Legs_All((float)i);
 			Delay_ms(SwingDelay);
+			Face_Service();/*摇摆是阻塞的，保证新表情一进来就能显示*/
 			ElapsedMs+=SwingDelay;
 			if(TargetMs && (ElapsedMs>=TargetMs))break;
 		}
@@ -322,6 +328,7 @@ void Action_Swing(void)//摇摆
 			if(Action_Mode!=8)break;
 			Legs_All((float)i);
 			Delay_ms(SwingDelay);
+			Face_Service();/*摇摆是阻塞的，保证新表情一进来就能显示*/
 			ElapsedMs+=SwingDelay;
 			if(TargetMs && (ElapsedMs>=TargetMs))break;
 		}
@@ -453,6 +460,7 @@ void Action_Hello(void)//打招呼
 
 	while(HelloNumber && (Action_Mode==13))
 	{
+		Face_Service();/*动作是阻塞的，每轮给表情一次刷新机会*/
 		if(Action_Mode!=13)break;
 
 		for(i=0;i<=45;i++)
@@ -495,6 +503,7 @@ void Action_stretch(void)//伸懒腰
 		Servo_Angle2((float)i);
 		if(Action_Mode!=14)break;
 		Delay_ms(15);
+		Face_Service();
 	}
 	for(i=10;i<90;i++)
 	{
@@ -502,6 +511,7 @@ void Action_stretch(void)//伸懒腰
 		Servo_Angle2((float)i);
 		if(Action_Mode!=14)break;
 		Delay_ms(15);
+		Face_Service();
 	}
 	for(i=90;i<170;i++)
 	{
@@ -509,6 +519,7 @@ void Action_stretch(void)//伸懒腰
 		Servo_Angle4((float)i);
 		if(Action_Mode!=14)break;
 		Delay_ms(15);
+		Face_Service();
 	}
 	for(i=170;i>90;i--)
 	{
@@ -516,6 +527,7 @@ void Action_stretch(void)//伸懒腰
 		Servo_Angle4((float)i);
 		if(Action_Mode!=14)break;
 		Delay_ms(15);
+		Face_Service();
 	}
 
 	Legs_All(90);
@@ -530,6 +542,8 @@ void Action_Lstretch(void)//后腿拉伸
 {
 	int i;
 	int RepeatTime=3;
+
+	Face_Service();/*动作是阻塞的，进来先把新表情画出来*/
 
 	/*---- 左后腿 ----*/
 	Servo_Angle1(90);
@@ -767,6 +781,13 @@ void PetAction_Judgmengt(uint8_t Serial_type)
 		/*【修复】非法字节直接丢弃：这一步是防止"蓝牙一连接就乱动"的关键*/
 		if(!Command_IsValid(RxData_Blue)) { return; }
 
+		/*【修复】0x52~0x55 只走语音通道，蓝牙不收。
+		   这几个码对应 ASCII 的 'R' 'S' 'T' 'U'，而蓝牙模块在手机
+		   连接/断开时会往串口吐 "CONNECTED" / "DISCONNECTED" 这类状态串，
+		   里面的 'S' 'T' 正好被当成"摇摆 27/16 秒"执行 —— 表现就是
+		   一连接（或一断开）桌宠自己摇起来。App 里也没有这四个按钮。*/
+		if((RxData_Blue>=0x52U) && (RxData_Blue<=0x55U)) { return; }
+
 		Sustainedmove=1;//持续运动开启（蓝牙是"一直走，直到下一条命令"）
 		switch(RxData_Blue)
 		{
@@ -863,26 +884,7 @@ void PetAction_Judgmengt(uint8_t Serial_type)
 				Face_Mode=7;
 				Action_Mode=2;
 				break;
-			case 0x52://摇摆 26 秒
-				Face_Mode=4;
-				SwingSeconds=26;
-				Action_Mode=8;
-				break;
-			case 0x53://摇摆 27 秒
-				Face_Mode=4;
-				SwingSeconds=27;
-				Action_Mode=8;
-				break;
-			case 0x54://摇摆 16 秒
-				Face_Mode=4;
-				SwingSeconds=16;
-				Action_Mode=8;
-				break;
-			case 0x55://摇摆 15 秒
-				Face_Mode=4;
-				SwingSeconds=15;
-				Action_Mode=8;
-				break;
+			/*0x52~0x55 是语音专用的定时摇摆，蓝牙通道已在上面的分支里挡掉*/
 			default:
 				break;
 		}
@@ -893,6 +895,13 @@ void PetAction_Judgmengt(uint8_t Serial_type)
 void PetAction_Perform(void)
 {
 		uint16_t ModeBefore=Action_Mode;   /*这次进来时是什么动作*/
+
+		/*【关键】进动作之前先把新表情画出来。
+		   动作函数一进去就阻塞几十毫秒到几十秒，30ms 的表情任务
+		   在此期间没有机会执行，屏幕会一直停在上一个表情
+		   （天气表情"切不走"就是这么来的）。*/
+		Face_Service();
+
 		if(Action_Mode==0){Action_relaxed_getdowm();}//放松趴下
 		else if(Action_Mode==1){Action_sit();}//坐下
 		else if(Action_Mode==2){Action_upright();}//站立

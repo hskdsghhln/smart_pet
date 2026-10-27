@@ -17,6 +17,11 @@
 #include "stm32f10x.h"
 #include "TS_Port.h"
 
+/* 20ms 一次的蓝牙指令判定。放在这里而不是任务链里，是因为舵机动作是
+   阻塞式实现（摇摆最长 27 秒），任务链上的任务在这期间全都被饿死。
+   见 BlueTooth_Poll() 的说明。 */
+#include "BlueTooth.h"
+
 /*==============================================================================
  * 配置
  *============================================================================*/
@@ -43,6 +48,11 @@
 
 /** 已走过的整毫秒数，只在 TIM4 中断里自增 */
 static volatile uint32_t s_tsTick = 0;
+
+/** 蓝牙指令判定的 20ms 分频计数，只在 TIM4 中断里动 */
+static volatile uint8_t  s_btPollDiv = 0;
+
+#define TS_BT_POLL_DIV      20U
 
 /*==============================================================================
  * 移植层实现
@@ -172,6 +182,13 @@ void TIM4_IRQHandler(void)
 	{
 		/* 先自增再清标志：这是 TS_Micros() 正确性的前提，不要调换顺序 */
 		s_tsTick++;
+
+		/* 每 20ms 判定一次蓝牙指令（单字节 + 静默窗口过滤） */
+		if (++s_btPollDiv >= TS_BT_POLL_DIV)
+		{
+			s_btPollDiv = 0;
+			BlueTooth_Poll();
+		}
 
 		TIM_ClearITPendingBit(TIM4, TIM_IT_Update);
 	}

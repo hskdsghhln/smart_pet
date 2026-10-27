@@ -4,6 +4,11 @@
 #include "Variable.h"
 #include "Weather.h"
 
+/* 上一次真正画到屏幕上的表情编号。
+   Face_Service() 靠它判断"要不要重画"，避免动作循环里每几毫秒就刷一次屏
+   （一次全屏 I2C 刷新要 20~30ms，那样动作会被拖慢一倍）。*/
+static volatile uint16_t Face_DrawnMode = 0xFFFFU;
+
 /* 把整数追加到字符串末尾，返回新的长度。
    OLED_ShowNum 会按固定长度取位、高位补零（5 显示成 "05"，100 按 2 位显示成 "00"），
    天气这里数值长短不定，所以自己转字符，按实际位数输出。 */
@@ -30,6 +35,9 @@ static uint8_t Face_NumAppend(char *dst, uint8_t n, int16_t v)
 //实现表情变化，调节是进中断后
 void Face_Config(void)
 {
+	/*先记下这次画的是哪一帧，Face_Service() 靠它判断要不要重画*/
+	Face_DrawnMode = Face_Mode;
+
 	/*图案处理*/
 	switch(Face_Mode)
 	{
@@ -125,4 +133,23 @@ void Face_Config(void)
 
 	/*显示图案*/
 		OLED_Update();
+}
+
+/**
+  * @brief  阻塞动作里的表情刷新点
+  * @note   动作函数（Action_Swing / Action_advance / ...）是阻塞式实现，
+  *         执行期间 30ms 的表情任务根本没有机会跑，于是"按下晴天表情的命令
+  *         却在摇尾巴"时，屏幕会一直停在上一个表情 —— 天气表情之所以看起来
+  *         像是"切不走"，根因就在这里：切过去之后动作立刻把调度器占住了。
+  *
+  *         动作循环里每个拍子调一次本函数：
+  *           表情没变 -> 只做一次比较，几微秒；
+  *           表情变了 -> 立刻重画一次（约 25ms），之后又回到只比较。
+  */
+void Face_Service(void)
+{
+	if(Face_Mode != Face_DrawnMode)
+	{
+		Face_Config();
+	}
 }
